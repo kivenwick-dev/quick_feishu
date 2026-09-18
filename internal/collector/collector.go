@@ -70,26 +70,28 @@ func Save(gdb *gorm.DB, date string, res *Result) error {
 	if err := gdb.Create(snap).Error; err != nil {
 		return err
 	}
-	for _, it := range res.TokenList.Items {
-		ts := &model.TokenSnapshot{
-			SnapshotID:  snap.ID,
-			TokenID:     it.ID,
-			TokenName:   it.Name,
-			UsedQuota:   it.UsedQuota,
-			RemainQuota: it.RemainQuota,
-		}
-		if len(it.Raw) > 0 {
-			ts.ListRaw = datatypes.JSON(it.Raw)
-		}
-		if u, ok := res.Usages[it.ID]; ok && u != nil {
-			ts.TotalUsed = u.TotalUsed
-			ts.TotalGranted = u.TotalGranted
-			if len(u.Raw) > 0 {
-				ts.UsageRaw = datatypes.JSON(u.Raw)
+	if res.TokenList != nil {
+		for _, it := range res.TokenList.Items {
+			ts := &model.TokenSnapshot{
+				SnapshotID:  snap.ID,
+				TokenID:     it.ID,
+				TokenName:   it.Name,
+				UsedQuota:   it.UsedQuota,
+				RemainQuota: it.RemainQuota,
 			}
-		}
-		if err := gdb.Create(ts).Error; err != nil {
-			return err
+			if len(it.Raw) > 0 {
+				ts.ListRaw = datatypes.JSON(it.Raw)
+			}
+			if u, ok := res.Usages[it.ID]; ok && u != nil {
+				ts.TotalUsed = u.TotalUsed
+				ts.TotalGranted = u.TotalGranted
+				if len(u.Raw) > 0 {
+					ts.UsageRaw = datatypes.JSON(u.Raw)
+				}
+			}
+			if err := gdb.Create(ts).Error; err != nil {
+				return err
+			}
 		}
 	}
 	return nil

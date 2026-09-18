@@ -85,7 +85,7 @@ func (c *Client) GetTokenList() (*TokenListData, []byte, error) {
 			all.Items = append(all.Items, item)
 			allRaw = append(allRaw, rawItem)
 		}
-		if len(dataObj.Items) == 0 || (page+1)*pageSize >= total {
+		if len(dataObj.Items) == 0 || pageSize <= 0 || (page+1)*pageSize >= total {
 			break
 		}
 		page++
