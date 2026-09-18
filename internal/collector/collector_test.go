@@ -113,3 +113,54 @@ func TestSaveStoresUnknownFields(t *testing.T) {
 		t.Errorf("token UsageRaw missing unknown field: %s", string(tokens[0].UsageRaw))
 	}
 }
+
+func TestSaveUpsertsSameDate(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/user/self":
+			w.Write([]byte(`{"data":{"id":9,"quota":1000,"used_quota":300,"request_count":5},"success":true}`))
+		case "/api/token/":
+			w.Write([]byte(`{"data":{"page":1,"page_size":2,"total":2,"items":[
+				{"id":11,"key":"k1","name":"claude","used_quota":100},
+				{"id":12,"key":"k2","name":"gpt","used_quota":200}
+			]},"success":true}`))
+		case "/api/usage/token/":
+			w.Write([]byte(`{"data":{"name":"x","total_used":100},"success":true}`))
+		}
+	}))
+	defer srv.Close()
+
+	gdb, err := db.Init(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := api.NewClient(srv.URL, "sys", "9")
+	res := Collect(c)
+
+	if err := Save(gdb, "2026-09-18", res); err != nil {
+		t.Fatal(err)
+	}
+	if err := Save(gdb, "2026-09-18", res); err != nil {
+		t.Fatal(err)
+	}
+
+	var snapCount int64
+	gdb.Model(&model.Snapshot{}).Count(&snapCount)
+	if snapCount != 1 {
+		t.Errorf("snapshots = %d, want 1 (same date should upsert)", snapCount)
+	}
+	var tokCount int64
+	gdb.Model(&model.TokenSnapshot{}).Count(&tokCount)
+	if tokCount != 2 {
+		t.Errorf("token snapshots = %d, want 2 (no orphans)", tokCount)
+	}
+
+	// 另一天应新增而非覆盖
+	if err := Save(gdb, "2026-09-19", res); err != nil {
+		t.Fatal(err)
+	}
+	gdb.Model(&model.Snapshot{}).Count(&snapCount)
+	if snapCount != 2 {
+		t.Errorf("snapshots = %d, want 2 after new date", snapCount)
+	}
+}

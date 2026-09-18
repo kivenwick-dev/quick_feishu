@@ -46,7 +46,8 @@ func Collect(c *api.Client) *Result {
 	return res
 }
 
-// Save 将采集结果（全字段原始 JSON）写入快照表
+// Save 将采集结果（全字段原始 JSON）写入快照表。
+// 按日期覆盖：同一天重复采集会替换旧快照，避免产生多条同日快照。
 func Save(gdb *gorm.DB, date string, res *Result) error {
 	usageMap := map[string]json.RawMessage{}
 	for id, u := range res.Usages {
@@ -56,43 +57,60 @@ func Save(gdb *gorm.DB, date string, res *Result) error {
 	}
 	usageRaw, _ := json.Marshal(usageMap)
 
-	snap := &model.Snapshot{SnapshotDate: date}
-	if res.Account != nil {
-		snap.AccountRaw = datatypes.JSON(res.Account.Raw)
-		snap.AccountQuota = res.Account.Quota
-		snap.AccountUsed = res.Account.UsedQuota
-		snap.RequestCount = res.Account.RequestCount
-	}
-	if res.TokenList != nil {
-		snap.TokenListRaw = datatypes.JSON(res.TokenList.Raw)
-	}
-	snap.TokenUsageRaw = datatypes.JSON(usageRaw)
-	if err := gdb.Create(snap).Error; err != nil {
-		return err
-	}
-	if res.TokenList != nil {
-		for _, it := range res.TokenList.Items {
-			ts := &model.TokenSnapshot{
-				SnapshotID:  snap.ID,
-				TokenID:     it.ID,
-				TokenName:   it.Name,
-				UsedQuota:   it.UsedQuota,
-				RemainQuota: it.RemainQuota,
+	return gdb.Transaction(func(tx *gorm.DB) error {
+		// 1) 删除同日旧快照及其令牌快照
+		var olds []model.Snapshot
+		if err := tx.Where("snapshot_date = ?", date).Find(&olds).Error; err != nil {
+			return err
+		}
+		for _, o := range olds {
+			if err := tx.Where("snapshot_id = ?", o.ID).Delete(&model.TokenSnapshot{}).Error; err != nil {
+				return err
 			}
-			if len(it.Raw) > 0 {
-				ts.ListRaw = datatypes.JSON(it.Raw)
-			}
-			if u, ok := res.Usages[it.ID]; ok && u != nil {
-				ts.TotalUsed = u.TotalUsed
-				ts.TotalGranted = u.TotalGranted
-				if len(u.Raw) > 0 {
-					ts.UsageRaw = datatypes.JSON(u.Raw)
-				}
-			}
-			if err := gdb.Create(ts).Error; err != nil {
+			if err := tx.Delete(&model.Snapshot{}, o.ID).Error; err != nil {
 				return err
 			}
 		}
-	}
-	return nil
+
+		// 2) 写入新快照
+		snap := &model.Snapshot{SnapshotDate: date}
+		if res.Account != nil {
+			snap.AccountRaw = datatypes.JSON(res.Account.Raw)
+			snap.AccountQuota = res.Account.Quota
+			snap.AccountUsed = res.Account.UsedQuota
+			snap.RequestCount = res.Account.RequestCount
+		}
+		if res.TokenList != nil {
+			snap.TokenListRaw = datatypes.JSON(res.TokenList.Raw)
+		}
+		snap.TokenUsageRaw = datatypes.JSON(usageRaw)
+		if err := tx.Create(snap).Error; err != nil {
+			return err
+		}
+		if res.TokenList != nil {
+			for _, it := range res.TokenList.Items {
+				ts := &model.TokenSnapshot{
+					SnapshotID:  snap.ID,
+					TokenID:     it.ID,
+					TokenName:   it.Name,
+					UsedQuota:   it.UsedQuota,
+					RemainQuota: it.RemainQuota,
+				}
+				if len(it.Raw) > 0 {
+					ts.ListRaw = datatypes.JSON(it.Raw)
+				}
+				if u, ok := res.Usages[it.ID]; ok && u != nil {
+					ts.TotalUsed = u.TotalUsed
+					ts.TotalGranted = u.TotalGranted
+					if len(u.Raw) > 0 {
+						ts.UsageRaw = datatypes.JSON(u.Raw)
+					}
+				}
+				if err := tx.Create(ts).Error; err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	})
 }

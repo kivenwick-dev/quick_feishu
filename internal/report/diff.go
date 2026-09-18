@@ -43,53 +43,54 @@ func splitPath(p string) []string {
 	return segs
 }
 
-// DiffResult 单字段差值结果
+// DiffResult 单字段结果：Value 为今日值；若启用差值且可计算，Delta 为带符号变动值。
 type DiffResult struct {
-	Field  string
-	Label  string
-	Diff   bool
-	Value  string // 展示值（差值或当前值）
-	IsDiff bool   // 是否实际计算了差值
+	Field  string `json:"field"`
+	Label  string `json:"label"`
+	Value  string `json:"value"` // 今日值（始终展示）
+	Delta  string `json:"delta"` // 变动值（带符号），仅当 IsDiff 为 true
+	IsDiff bool   `json:"is_diff"`
 }
 
-// computeDiff 计算字段差值。早/晚快照可为 nil。
+// ComputeDiffAccount 对账号快照字段取值并计算差值。
 // account 源从 AccountRaw 提取（方案A：AccountRaw 为全字段 data 对象，字段路径为顶层）。
-func computeDiff(early, late *model.Snapshot, f Field, label string) (DiffResult, error) {
-	var lateVal, earlyVal interface{}
-	var ok bool
-	res := DiffResult{Field: f.Field, Label: label, Diff: f.Diff}
-	if late != nil {
-		lateVal, ok = extractField(late.AccountRaw, f.Field)
-		if !ok {
-			return res, fmt.Errorf("field %s not found", f.Field)
-		}
+func ComputeDiffAccount(early, late *model.Snapshot, f Field, label string) (DiffResult, error) {
+	res := DiffResult{Field: f.Field, Label: label}
+	if late == nil {
+		return res, fmt.Errorf("no late snapshot")
 	}
-	if !f.Diff {
-		res.Value = formatVal(lateVal)
-		return res, nil
+	lateVal, ok := extractField(late.AccountRaw, f.Field)
+	if !ok {
+		return res, fmt.Errorf("field %s not found", f.Field)
 	}
-	if early == nil {
-		res.Value = formatVal(lateVal)
-		res.IsDiff = false
-		return res, nil
+	var earlyVal interface{}
+	if early != nil {
+		earlyVal, _ = extractField(early.AccountRaw, f.Field)
 	}
-	earlyVal, _ = extractField(early.AccountRaw, f.Field)
-	// 数值相减，非数值显示晚值
+	return DiffValue(label, lateVal, earlyVal, f.Diff), nil
+}
+
+// DiffValue 通用取值+差值：Value 始终为晚值；wantDiff 且两值均可转数值时计算带符号 Delta。
+func DiffValue(label string, lateVal, earlyVal interface{}, wantDiff bool) DiffResult {
+	res := DiffResult{Label: label, Value: formatVal(lateVal)}
+	if !wantDiff {
+		return res
+	}
 	ln, lok := toFloat(lateVal)
 	en, eok := toFloat(earlyVal)
 	if lok && eok {
-		res.Value = formatNum(ln - en)
+		res.Delta = signedNum(ln - en)
 		res.IsDiff = true
-	} else {
-		res.Value = formatVal(lateVal)
-		res.IsDiff = false
 	}
-	return res, nil
+	return res
 }
 
-// ComputeDiffAccount 供 handler/service 使用：对账号快照字段计算差值
-func ComputeDiffAccount(early, late *model.Snapshot, f Field, label string) (DiffResult, error) {
-	return computeDiff(early, late, f, label)
+// signedNum 带符号格式化：正数加 +，负数自带 -，0 显示 0
+func signedNum(f float64) string {
+	if f > 0 {
+		return "+" + formatNum(f)
+	}
+	return formatNum(f)
 }
 
 func toFloat(v interface{}) (float64, bool) {

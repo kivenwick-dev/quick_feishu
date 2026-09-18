@@ -21,6 +21,9 @@ func (s *Server) RegisterRoutes(h *Handlers) {
 		api.GET("/snapshots", h.ListSnapshots)
 		api.GET("/compare", h.CompareSnapshots)
 		api.GET("/snapshots/:id", h.GetSnapshot)
+		api.GET("/history", h.GetHistory)
+		api.GET("/tokens", h.GetTokens)
+		api.GET("/latest", h.GetLatest)
 		api.GET("/template", h.GetTemplate)
 		api.PUT("/template", h.SaveTemplate)
 		api.GET("/dict/:source", h.GetDict)
@@ -29,6 +32,8 @@ func (s *Server) RegisterRoutes(h *Handlers) {
 		api.PUT("/settings", h.SaveSettings)
 		api.POST("/feishu/test", h.TestFeishu)
 		api.GET("/sendlogs", h.ListSendLogs)
+		api.POST("/scheduler/restart", h.RestartScheduler)
+		api.GET("/scheduler/status", h.SchedulerStatus)
 	}
 	staticFS, _ := fs.Sub(webFS, "web")
 	fileServer := http.FileServer(http.FS(staticFS))

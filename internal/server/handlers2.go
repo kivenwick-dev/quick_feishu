@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"quick-feishu/internal/app"
 	"quick-feishu/internal/config"
 	"quick-feishu/internal/db"
 	"quick-feishu/internal/feishu"
@@ -65,8 +66,7 @@ func (h *Handlers) SaveTemplate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	h.Config.ReportTemplate = mustToMap(tmpl)
-	if err := h.Config.Save(h.ConfigPath); err != nil {
+	if err := h.App.SaveTemplate(mustToMap(tmpl)); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -170,22 +170,41 @@ func (h *Handlers) SaveSettings(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	env := config.EnvOverridden()
-	if env["user_id"] {
-		in.Account.UserID = h.Config.Account.UserID
-	}
-	if env["system_token"] {
-		in.Account.SystemToken = h.Config.Account.SystemToken
-	}
-	if env["webhook_url"] {
-		in.Feishu.WebhookURL = h.Config.Feishu.WebhookURL
-	}
-	*h.Config = in
-	if err := h.Config.Save(h.ConfigPath); err != nil {
+	if err := h.App.SaveConfig(&in); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+// RestartScheduler 重新加载配置、重建 API 客户端、重启定时任务，并重新采集当天快照，
+// 使新账号/令牌立即生效。
+func (h *Handlers) RestartScheduler(c *gin.Context) {
+	if err := h.App.Restart(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	res, snapErr := h.App.RunSnapshot()
+	resp := gin.H{
+		"success":       true,
+		"next_runs":     h.App.NextRuns(),
+		"snapshot_date": app.Today(),
+	}
+	if snapErr != nil {
+		resp["snapshot_error"] = snapErr.Error()
+	} else if res != nil && len(res.Errors) > 0 {
+		resp["snapshot_warnings"] = res.Errors
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// SchedulerStatus 返回定时任务时间与下次执行时间
+func (h *Handlers) SchedulerStatus(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"snapshot_time": h.Config.Schedule.SnapshotTime,
+		"report_time":   h.Config.Schedule.ReportTime,
+		"next_runs":     h.App.NextRuns(),
+	})
 }
 
 func (h *Handlers) TestFeishu(c *gin.Context) {

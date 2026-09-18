@@ -2,6 +2,7 @@ package report
 
 import (
 	"encoding/json"
+	"strings"
 )
 
 type Card struct {
@@ -29,6 +30,13 @@ type CardText struct {
 	Content string `json:"content"`
 }
 
+// DivText 纯文本/富文本区块
+type DivText struct {
+	Tag  string   `json:"tag"`
+	Text CardText `json:"text"`
+}
+
+// DivElement 字段区块（保留兼容，当前卡片不再使用并排字段）
 type DivElement struct {
 	Tag    string      `json:"tag"`
 	Fields []CardField `json:"fields"`
@@ -43,10 +51,84 @@ type HR struct {
 	Tag string `json:"tag"`
 }
 
-// SectionResult 一个分区的渲染结果（含分区标题）
+// Metric 一个指标（三级）；HasDelta 时其下再挂一个「（变动）」子级
+type Metric struct {
+	Label    string `json:"label"`
+	Value    string `json:"value"`
+	Delta    string `json:"delta"`
+	HasDelta bool   `json:"has_delta"`
+}
+
+// TokenNode 一个令牌节点（二级），含其指标（三级）
+type TokenNode struct {
+	Name    string   `json:"name"`
+	Metrics []Metric `json:"metrics"`
+}
+
+// SectionResult 一个分区的渲染结果：Fields 为扁平分区，Tokens 为树状分区
 type SectionResult struct {
-	Name   string
-	Fields []DiffResult
+	Name   string       `json:"name"`
+	Fields []DiffResult `json:"fields"`
+	Tokens []TokenNode  `json:"tokens"`
+}
+
+const indent = "\u3000" // 全角空格
+
+// flatContent 扁平分区分内容：一个指标一行；开启差值的指标下方加「（变动）」子级
+func flatContent(fields []DiffResult) string {
+	var lines []string
+	for _, r := range fields {
+		if r.Label == "" {
+			continue
+		}
+		lines = append(lines, "**"+r.Label+"**："+r.Value)
+		if r.IsDiff && r.Delta != "" {
+			lines = append(lines, indent+"└─ "+r.Label+"（变动）："+r.Delta)
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+// treeContent 树状分区分内容：分区(一级) → 令牌(二级) → 指标(三级) → 变动(指标子级)
+func treeContent(tokens []TokenNode) string {
+	var lines []string
+	for i, tok := range tokens {
+		last := i == len(tokens)-1
+		branch := "├─ "
+		childPrefix := "│" + indent
+		if last {
+			branch = "└─ "
+			childPrefix = indent + indent
+		}
+		lines = append(lines, branch+"**"+tok.Name+"**")
+		for j, m := range tok.Metrics {
+			metricLast := j == len(tok.Metrics)-1
+			mbranch := "├─ "
+			if metricLast {
+				mbranch = "└─ "
+			}
+			lines = append(lines, childPrefix+mbranch+m.Label+"："+m.Value)
+			if m.HasDelta && m.Delta != "" {
+				cont := "│" + indent
+				if metricLast {
+					cont = indent + indent
+				}
+				lines = append(lines, childPrefix+cont+"└─ "+m.Label+"（变动）："+m.Delta)
+			}
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+func sectionContent(sec SectionResult) string {
+	if len(sec.Tokens) > 0 {
+		return treeContent(sec.Tokens)
+	}
+	return flatContent(sec.Fields)
+}
+
+func hasContent(sec SectionResult) bool {
+	return len(sec.Fields) > 0 || len(sec.Tokens) > 0
 }
 
 // BuildCard 根据模板与分区结果生成卡片
@@ -62,34 +144,25 @@ func BuildCard(tmpl *Template, date string, sections []SectionResult) (*Card, er
 			Elements: []interface{}{},
 		},
 	}
+	first := true
 	for _, sec := range sections {
-		if len(sec.Fields) == 0 {
+		if !hasContent(sec) {
 			continue
 		}
-		// 分区前分隔线（仅当已有内容）
-		if len(card.Card.Elements) > 0 {
+		if !first {
 			card.Card.Elements = append(card.Card.Elements, HR{Tag: "hr"})
 		}
-		// 分区标题
+		first = false
 		if sec.Name != "" {
-			card.Card.Elements = append(card.Card.Elements, DivElement{
-				Tag: "div",
-				Fields: []CardField{{
-					IsShort: false,
-					Text:    CardText{Tag: "lark_md", Content: "**" + sec.Name + "**"},
-				}},
+			card.Card.Elements = append(card.Card.Elements, DivText{
+				Tag:  "div",
+				Text: CardText{Tag: "lark_md", Content: "**" + sec.Name + "**"},
 			})
 		}
-		// 字段块
-		div := DivElement{Tag: "div", Fields: []CardField{}}
-		for _, r := range sec.Fields {
-			content := "**" + r.Label + "**\n" + r.Value
-			div.Fields = append(div.Fields, CardField{
-				IsShort: true,
-				Text:    CardText{Tag: "lark_md", Content: content},
-			})
-		}
-		card.Card.Elements = append(card.Card.Elements, div)
+		card.Card.Elements = append(card.Card.Elements, DivText{
+			Tag:  "div",
+			Text: CardText{Tag: "lark_md", Content: sectionContent(sec)},
+		})
 	}
 	return card, nil
 }

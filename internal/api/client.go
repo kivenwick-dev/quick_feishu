@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,6 +12,20 @@ import (
 const DefaultBase = "https://api.quickrouter.ai"
 
 var sleepFn = time.Sleep
+
+// HTTPError 表示服务端返回的非 200 响应
+type HTTPError struct {
+	Status int
+	Body   string
+}
+
+func (e *HTTPError) Error() string {
+	return fmt.Sprintf("http %d: %s", e.Status, e.Body)
+}
+
+// Retryable 仅 5xx（服务端错误）可重试；4xx（401 无效令牌 / 429 限流 / 400）不重试，
+// 避免因反复使用无效令牌触发服务端防滥用限流。
+func (e *HTTPError) Retryable() bool { return e.Status >= 500 }
 
 type Client struct {
 	BaseURL     string
@@ -54,7 +69,7 @@ func (c *Client) doGet(path string, query map[string]string, extraHeaders map[st
 		return nil, err
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("http %d: %s", resp.StatusCode, string(body))
+		return nil, &HTTPError{Status: resp.StatusCode, Body: string(body)}
 	}
 	return body, nil
 }
@@ -63,7 +78,8 @@ func parseJSON(body []byte, v interface{}) error {
 	return json.Unmarshal(body, v)
 }
 
-// WithRetry 带退避重试执行 fn（retries 次，2s/4s/8s...）
+// WithRetry 带退避重试执行 fn（retries 次，2s/4s/8s...）。
+// 仅对可重试错误重试：网络错误或 5xx；4xx 立即返回不重试。
 func WithRetry(retries int, fn func() ([]byte, error)) ([]byte, error) {
 	var lastErr error
 	for i := 0; i <= retries; i++ {
@@ -71,6 +87,10 @@ func WithRetry(retries int, fn func() ([]byte, error)) ([]byte, error) {
 		body, lastErr = fn()
 		if lastErr == nil {
 			return body, nil
+		}
+		var he *HTTPError
+		if errors.As(lastErr, &he) && !he.Retryable() {
+			return nil, lastErr
 		}
 		if i < retries {
 			sleepFn(time.Duration(1<<uint(i)) * 2 * time.Second)

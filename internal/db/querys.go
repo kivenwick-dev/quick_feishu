@@ -61,3 +61,70 @@ func ListSendLogs(gdb *gorm.DB, page, size int) ([]model.SendLog, int64, error) 
 	err := gdb.Order("id DESC").Offset((page - 1) * size).Limit(size).Find(&list).Error
 	return list, total, err
 }
+
+// DictLabels 返回某接口字段字典的 field_path -> label 映射
+func DictLabels(gdb *gorm.DB, source string) map[string]string {
+	m := map[string]string{}
+	switch source {
+	case "account":
+		var list []model.DictAccountField
+		gdb.Find(&list)
+		for _, v := range list {
+			m[v.FieldPath] = v.Label
+		}
+	case "token":
+		var list []model.DictTokenField
+		gdb.Find(&list)
+		for _, v := range list {
+			m[v.FieldPath] = v.Label
+		}
+	case "usage":
+		var list []model.DictUsageField
+		gdb.Find(&list)
+		for _, v := range list {
+			m[v.FieldPath] = v.Label
+		}
+	}
+	return m
+}
+
+// FieldInfo 字段字典项（有序）
+type FieldInfo struct {
+	Path  string `json:"path"`
+	Label string `json:"label"`
+}
+
+// DictFieldList 返回某接口字段字典的有序列表（按内置顺序）
+func DictFieldList(gdb *gorm.DB, source string) []FieldInfo {
+	var out []FieldInfo
+	switch source {
+	case "account":
+		var list []model.DictAccountField
+		gdb.Order("id ASC").Find(&list)
+		for _, v := range list {
+			out = append(out, FieldInfo{Path: v.FieldPath, Label: v.Label})
+		}
+	case "token":
+		var list []model.DictTokenField
+		gdb.Order("id ASC").Find(&list)
+		for _, v := range list {
+			out = append(out, FieldInfo{Path: v.FieldPath, Label: v.Label})
+		}
+	case "usage":
+		var list []model.DictUsageField
+		gdb.Order("id ASC").Find(&list)
+		for _, v := range list {
+			out = append(out, FieldInfo{Path: v.FieldPath, Label: v.Label})
+		}
+	}
+	return out
+}
+
+// LatestTokens 返回最近一次快照下的令牌列表
+func LatestTokens(gdb *gorm.DB) ([]model.TokenSnapshot, error) {
+	latest, err := LatestSnapshot(gdb)
+	if err != nil {
+		return nil, err
+	}
+	return TokenSnapshots(gdb, latest.ID)
+}

@@ -26,24 +26,54 @@ func TemplateFromMap(m map[string]interface{}) (*Template, error) {
 	return t, nil
 }
 
-// ExecuteReport 取最新两日快照，按模板计算差值生成卡片，推送到飞书并记录日志。
-// 返回发送日志（无论成败），供调用方展示。
-func ExecuteReport(gdb *gorm.DB, latest, prev *model.Snapshot, tmpl *Template, webhookURL string, retryTimes int) (*model.SendLog, error) {
-	if latest == nil {
-		return nil, fmt.Errorf("no snapshots yet")
+// labelOf 返回字段的中文名；字典没有则回退字段路径
+func labelOf(labels map[string]string, field string) string {
+	if l := labels[field]; l != "" {
+		return l
 	}
+	return field
+}
+
+// extractTokenField 从令牌快照中取值：先 usage 原始 JSON，再列表原始 JSON
+func extractTokenField(tok model.TokenSnapshot, path string) (interface{}, bool) {
+	if v, ok := extractField(tok.UsageRaw, path); ok {
+		return v, true
+	}
+	if v, ok := extractField(tok.ListRaw, path); ok {
+		return v, true
+	}
+	return nil, false
+}
+
+// BuildSections 按模板将快照数据组装为分区结果（不涉及网络）。
+func BuildSections(gdb *gorm.DB, latest, prev *model.Snapshot, tmpl *Template) []SectionResult {
+	accountLabels := db.DictLabels(gdb, "account")
+	usageLabels := db.DictLabels(gdb, "usage")
+	tokenLabels := db.DictLabels(gdb, "token")
+
 	sections := []SectionResult{}
 	for _, sec := range tmpl.Sections {
-		var secRes []DiffResult
 		switch sec.Source {
 		case "account":
+			s := SectionResult{Name: sec.Name}
 			for _, f := range sec.Fields {
-				res, err := ComputeDiffAccount(prev, latest, f, f.Field)
-				if err != nil {
+				if f.Field == "" {
 					continue
 				}
-				secRes = append(secRes, res)
+				lateVal, ok := extractField(latest.AccountRaw, f.Field)
+				if !ok {
+					continue
+				}
+				var earlyVal interface{}
+				if prev != nil {
+					earlyVal, _ = extractField(prev.AccountRaw, f.Field)
+				}
+				s.Fields = append(s.Fields, DiffValue(labelOf(accountLabels, f.Field), lateVal, earlyVal, f.Diff))
 			}
+			if len(s.Fields) > 0 {
+				sections = append(sections, s)
+			}
+
 		case "usage":
 			if !sec.PerToken {
 				continue
@@ -53,16 +83,58 @@ func ExecuteReport(gdb *gorm.DB, latest, prev *model.Snapshot, tmpl *Template, w
 				continue
 			}
 			prevTokens, _ := db.TokenSnapshots(gdb, prevID(prev))
+			prevByID := map[int]model.TokenSnapshot{}
+			for _, pt := range prevTokens {
+				prevByID[pt.TokenID] = pt
+			}
+			s := SectionResult{Name: sec.Name}
 			for _, tok := range tokens {
-				for _, f := range sec.Fields {
-					secRes = append(secRes, tokenDiff(prevTokens, tok, f))
+				var pt *model.TokenSnapshot
+				if p, ok := prevByID[tok.TokenID]; ok {
+					pt = &p
 				}
+				node := TokenNode{Name: tok.TokenName}
+				for _, f := range sec.Fields {
+					if f.Field == "" || f.Field == "name" {
+						continue // name 用作二级节点标题，不再作为指标
+					}
+					lateVal, ok := extractTokenField(tok, f.Field)
+					if !ok {
+						continue
+					}
+					var earlyVal interface{}
+					if pt != nil {
+						earlyVal, _ = extractTokenField(*pt, f.Field)
+					}
+					label := labelOf(usageLabels, f.Field)
+					if usageLabels[f.Field] == "" {
+						label = labelOf(tokenLabels, f.Field)
+					}
+					res := DiffValue(label, lateVal, earlyVal, f.Diff)
+					node.Metrics = append(node.Metrics, Metric{
+						Label:    res.Label,
+						Value:    res.Value,
+						Delta:    res.Delta,
+						HasDelta: res.IsDiff,
+					})
+				}
+				s.Tokens = append(s.Tokens, node)
+			}
+			if len(s.Tokens) > 0 {
+				sections = append(sections, s)
 			}
 		}
-		if len(secRes) > 0 {
-			sections = append(sections, SectionResult{Name: sec.Name, Fields: secRes})
-		}
 	}
+	return sections
+}
+
+// ExecuteReport 取最新两日快照，按模板计算差值生成卡片，推送到飞书并记录日志。
+// 返回发送日志（无论成败），供调用方展示。
+func ExecuteReport(gdb *gorm.DB, latest, prev *model.Snapshot, tmpl *Template, webhookURL string, retryTimes int) (*model.SendLog, error) {
+	if latest == nil {
+		return nil, fmt.Errorf("no snapshots yet")
+	}
+	sections := BuildSections(gdb, latest, prev, tmpl)
 	card, err := BuildCard(tmpl, latest.SnapshotDate, sections)
 	if err != nil {
 		return nil, err
@@ -85,47 +157,4 @@ func prevID(prev *model.Snapshot) uint {
 		return prev.ID
 	}
 	return 0
-}
-
-func tokenDiff(prevTokens []model.TokenSnapshot, tok model.TokenSnapshot, f Field) DiffResult {
-	res := DiffResult{Field: f.Field, Diff: f.Diff, Value: formatVal(nil)}
-	var prev *model.TokenSnapshot
-	for i := range prevTokens {
-		if prevTokens[i].TokenID == tok.TokenID {
-			prev = &prevTokens[i]
-			break
-		}
-	}
-	switch f.Field {
-	case "total_used":
-		res.Label = "累计已用"
-		res.Value = numDiff(prevTotal(prev), tok.TotalUsed)
-	case "remain_quota":
-		res.Label = "剩余配额"
-		res.Value = formatNum(float64(tok.RemainQuota))
-	case "used_quota":
-		res.Label = "已用配额"
-		res.Value = numDiff(prevUsed(prev), tok.UsedQuota)
-	default:
-		res.Value = formatVal(nil)
-	}
-	return res
-}
-
-func prevTotal(prev *model.TokenSnapshot) int64 {
-	if prev != nil {
-		return prev.TotalUsed
-	}
-	return 0
-}
-
-func prevUsed(prev *model.TokenSnapshot) int64 {
-	if prev != nil {
-		return prev.UsedQuota
-	}
-	return 0
-}
-
-func numDiff(prevVal, cur int64) string {
-	return formatNum(float64(cur - prevVal))
 }

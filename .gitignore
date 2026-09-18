@@ -7,3 +7,5 @@ quick-feishu
 node_modules/
 frontend/dist/
 !data/.gitkeep
+server.log
+*.log

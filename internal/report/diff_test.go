@@ -15,23 +15,39 @@ func mkSnap(used int64) *model.Snapshot {
 func TestComputeDiffNumeric(t *testing.T) {
 	early := mkSnap(100)
 	late := mkSnap(150)
-	res, err := computeDiff(early, late, Field{Field: "used_quota", Diff: true}, "已用配额")
+	res, err := ComputeDiffAccount(early, late, Field{Field: "used_quota", Diff: true}, "已用配额")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !res.IsDiff || res.Value != "50" {
-		t.Errorf("expected 50, got %s (diff=%v)", res.Value, res.IsDiff)
+	// 主值始终为今日值，变动为带符号差值
+	if res.Value != "150" {
+		t.Errorf("value = %s, want 150 (today)", res.Value)
+	}
+	if !res.IsDiff || res.Delta != "+50" {
+		t.Errorf("delta = %q (diff=%v), want +50", res.Delta, res.IsDiff)
+	}
+}
+
+func TestComputeDiffNegative(t *testing.T) {
+	early := mkSnap(150)
+	late := mkSnap(100)
+	res, _ := ComputeDiffAccount(early, late, Field{Field: "used_quota", Diff: true}, "已用配额")
+	if res.Value != "100" || res.Delta != "-50" {
+		t.Errorf("value=%q delta=%q, want 100 / -50", res.Value, res.Delta)
 	}
 }
 
 func TestComputeDiffNoEarly(t *testing.T) {
 	late := mkSnap(150)
-	res, _ := computeDiff(nil, late, Field{Field: "used_quota", Diff: true}, "已用配额")
+	res, _ := ComputeDiffAccount(nil, late, Field{Field: "used_quota", Diff: true}, "已用配额")
 	if res.IsDiff {
 		t.Errorf("no early should not diff")
 	}
 	if res.Value != "150" {
 		t.Errorf("value = %s", res.Value)
+	}
+	if res.Delta != "" {
+		t.Errorf("delta should be empty, got %q", res.Delta)
 	}
 }
 
@@ -40,7 +56,7 @@ func TestComputeDiffNonNumeric(t *testing.T) {
 	rawB, _ := json.Marshal(map[string]interface{}{"group": "B"})
 	early := &model.Snapshot{AccountRaw: rawA}
 	late := &model.Snapshot{AccountRaw: rawB}
-	res, _ := computeDiff(early, late, Field{Field: "group", Diff: true}, "分组")
+	res, _ := ComputeDiffAccount(early, late, Field{Field: "group", Diff: true}, "分组")
 	if res.IsDiff {
 		t.Errorf("string field should not diff")
 	}
@@ -52,7 +68,7 @@ func TestComputeDiffNonNumeric(t *testing.T) {
 func TestComputeDiffNoDiffFlag(t *testing.T) {
 	early := mkSnap(100)
 	late := mkSnap(150)
-	res, _ := computeDiff(early, late, Field{Field: "used_quota", Diff: false}, "已用配额")
+	res, _ := ComputeDiffAccount(early, late, Field{Field: "used_quota", Diff: false}, "已用配额")
 	if res.IsDiff {
 		t.Error("diff=false should not compute diff")
 	}

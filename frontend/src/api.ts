@@ -17,4 +17,9 @@ export default {
   saveSettings: (data: any) => api.put('/settings', data),
   testFeishu: () => api.post('/feishu/test'),
   sendLogs: (page = 1, size = 20) => api.get('/sendlogs', { params: { page, size } }),
+  restartScheduler: () => api.post('/scheduler/restart'),
+  schedulerStatus: () => api.get('/scheduler/status'),
+  history: (source: string, tokenId?: number, limit = 30) => api.get('/history', { params: { source, token_id: tokenId, limit } }),
+  tokens: () => api.get('/tokens'),
+  latest: () => api.get('/latest'),
 }

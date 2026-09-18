@@ -5,6 +5,7 @@ import ElementPlus from 'element-plus'
 vi.mock('./api', () => ({
   default: {
     dashboard: vi.fn().mockResolvedValue({ data: { latest_snapshot: null, recent_logs: [] } }),
+    latest: vi.fn().mockResolvedValue({ data: { date: null, sections: [] } }),
     runSnapshot: vi.fn(),
     sendReport: vi.fn(),
     testFeishu: vi.fn(),

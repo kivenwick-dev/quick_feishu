@@ -1,71 +1,243 @@
 <template>
-  <div>
-    <h2>历史快照</h2>
-    <el-table :data="snapshots" style="width:100%" @row-click="loadDetail">
-      <el-table-column prop="snapshot_date" label="日期" />
-      <el-table-column prop="account_quota" label="总配额" />
-      <el-table-column prop="account_used" label="已用配额" />
-      <el-table-column prop="request_count" label="请求次数" />
-      <el-table-column prop="created_at" label="创建时间" />
-    </el-table>
-    <el-pagination layout="prev, pager, next" :total="total" :page-size="size" @current-change="loadList" style="margin-top:12px" />
+  <div class="snap-page">
+    <div class="page-head">
+      <h2>历史快照</h2>
+      <p class="sub">每日全字段指标卡片 · 变动为相对前一日（增红 / 减绿）</p>
+    </div>
 
-    <template v-if="detail">
-      <h3 style="margin-top:16px">快照详情 {{ detail.snapshot.snapshot_date }}</h3>
-      <el-tabs>
-        <el-tab-pane label="账号信息"><pre>{{ pretty(detail.snapshot.account_raw) }}</pre></el-tab-pane>
-        <el-tab-pane label="令牌列表"><pre>{{ pretty(detail.snapshot.token_list_raw) }}</pre></el-tab-pane>
-        <el-tab-pane label="令牌使用情况"><pre>{{ pretty(detail.snapshot.token_usage_raw) }}</pre></el-tab-pane>
+    <el-card shadow="never" class="filter-card">
+      <div class="toolbar">
+        <el-radio-group v-model="source" @change="onSourceChange">
+          <el-radio-button value="account">账号信息</el-radio-button>
+          <el-radio-button value="usage">令牌使用情况</el-radio-button>
+        </el-radio-group>
+
+        <el-select
+          v-if="source === 'usage'"
+          v-model="tokenId"
+          placeholder="选择令牌"
+          style="width: 220px"
+          @change="load"
+        >
+          <el-option v-for="tk in tokens" :key="tk.token_id" :value="tk.token_id" :label="tk.name" />
+        </el-select>
+
+        <el-date-picker
+          v-model="range"
+          type="daterange"
+          value-format="YYYY-MM-DD"
+          start-placeholder="开始日期"
+          end-placeholder="结束日期"
+          :clearable="true"
+          style="width: 260px"
+          @change="onFilterChange"
+        />
+
+        <el-select
+          v-model="visibleFields"
+          multiple
+          collapse-tags
+          collapse-tags-tooltip
+          placeholder="显示字段"
+          style="width: 300px"
+        >
+          <el-option v-for="f in allFields" :key="f.path" :value="f.path" :label="f.label || f.path" />
+        </el-select>
+      </div>
+    </el-card>
+
+    <el-empty v-if="filteredRows.length === 0" description="暂无历史数据" :image-size="80" style="margin-top: 24px" />
+
+    <div v-for="row in pagedRows" :key="row.id" class="day-panel">
+      <div class="day-head">
+        <span class="day-date">{{ row.date }}</span>
+        <el-button link type="primary" size="small" @click="openDetail(row)">查看原始数据</el-button>
+      </div>
+      <div class="grid">
+        <MetricCard
+          v-for="f in shownFields"
+          :key="f.path"
+          :label="f.label || f.path"
+          :value="row.values[f.path]"
+          :delta="row.deltas[f.path]"
+        />
+      </div>
+    </div>
+
+    <div class="pager">
+      <el-pagination
+        v-model:current-page="page"
+        :page-size="pageSize"
+        :total="filteredRows.length"
+        layout="total, sizes, prev, pager, next"
+        :page-sizes="[3, 6, 12, 24]"
+        background
+        @size-change="onFilterChange"
+      />
+    </div>
+
+    <el-drawer v-model="drawer" :title="drawerTitle" size="60%">
+      <el-tabs v-if="detail">
+        <el-tab-pane label="账号信息"><pre class="raw">{{ pretty(detail.snapshot.account_raw) }}</pre></el-tab-pane>
+        <el-tab-pane label="令牌列表"><pre class="raw">{{ pretty(detail.snapshot.token_list_raw) }}</pre></el-tab-pane>
+        <el-tab-pane label="令牌使用情况"><pre class="raw">{{ pretty(detail.snapshot.token_usage_raw) }}</pre></el-tab-pane>
       </el-tabs>
-    </template>
-
-    <h3 style="margin-top:16px">日期对比</h3>
-    <el-date-picker v-model="range" type="daterange" value-format="YYYY-MM-DD" />
-    <el-button @click="doCompare" :disabled="!range || range.length !== 2">对比</el-button>
-    <el-descriptions v-if="compare" :column="2" border style="margin-top:12px">
-      <el-descriptions-item label="起始">{{ compare.from.date }} 已用 {{ compare.from.used }}</el-descriptions-item>
-      <el-descriptions-item label="结束">{{ compare.to.date }} 已用 {{ compare.to.used }}</el-descriptions-item>
-      <el-descriptions-item label="已用差值">{{ compare.diff.used }}</el-descriptions-item>
-      <el-descriptions-item label="请求差值">{{ compare.diff.requests }}</el-descriptions-item>
-    </el-descriptions>
+    </el-drawer>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { computed, onMounted, ref } from 'vue'
 import api from '../api'
+import MetricCard from '../components/MetricCard.vue'
 
-const snapshots = ref<any[]>([])
-const total = ref(0)
-const size = 20
-const detail = ref<any>(null)
+const source = ref<'account' | 'usage'>('account')
+const tokenId = ref<number | undefined>(undefined)
+const tokens = ref<any[]>([])
+const allFields = ref<any[]>([])
+const visibleFields = ref<string[]>([])
+const rows = ref<any[]>([])
+
 const range = ref<string[] | null>(null)
-const compare = ref<any>(null)
+const page = ref(1)
+const pageSize = ref(6)
 
-async function loadList(page = 1) {
-  const res = await api.snapshots(page, size)
-  snapshots.value = res.data.items || []
-  total.value = res.data.total || 0
-}
-onMounted(() => loadList(1))
+const drawer = ref(false)
+const detail = ref<any>(null)
+const drawerTitle = ref('')
 
-async function loadDetail(row: any) {
-  const res = await api.snapshot(row.id)
-  detail.value = res.data
+const shownFields = computed(() => {
+  if (!visibleFields.value.length) return allFields.value
+  const set = new Set(visibleFields.value)
+  return allFields.value.filter((f) => set.has(f.path))
+})
+
+const filteredRows = computed(() => {
+  let r = rows.value
+  if (range.value && range.value.length === 2) {
+    const [from, to] = range.value
+    r = r.filter((x) => x.date >= from && x.date <= to)
+  }
+  return r
+})
+
+const pagedRows = computed(() => {
+  const start = (page.value - 1) * pageSize.value
+  return filteredRows.value.slice(start, start + pageSize.value)
+})
+
+function onFilterChange() {
+  page.value = 1
 }
+
+async function loadTokens() {
+  try {
+    const res = await api.tokens()
+    tokens.value = res.data.items || []
+    if (tokens.value.length && tokenId.value === undefined) {
+      tokenId.value = tokens.value[0].token_id
+    }
+  } catch {
+    tokens.value = []
+  }
+}
+
+async function load() {
+  if (source.value === 'usage' && tokenId.value === undefined) {
+    rows.value = []
+    allFields.value = []
+    return
+  }
+  const res = await api.history(source.value, source.value === 'usage' ? tokenId.value : undefined, 180)
+  allFields.value = res.data.fields || []
+  rows.value = (res.data.rows || []).slice().reverse() // 日期降序
+  visibleFields.value = allFields.value.map((f: any) => f.path)
+  page.value = 1
+}
+
+async function onSourceChange() {
+  if (source.value === 'usage') {
+    await loadTokens()
+  }
+  await load()
+}
+
+onMounted(async () => {
+  await loadTokens()
+  await load()
+})
+
 function pretty(raw: any) {
   if (raw === null || raw === undefined) return ''
   if (typeof raw === 'object') return JSON.stringify(raw, null, 2)
-  try { return JSON.stringify(JSON.parse(raw), null, 2) } catch { return String(raw) }
-}
-async function doCompare() {
-  if (!range.value || range.value.length !== 2) return
   try {
-    const res = await api.compare(range.value[0], range.value[1])
-    compare.value = res.data
-  } catch (e: any) {
-    ElMessage.error(e?.response?.data?.error || '对比失败')
+    return JSON.stringify(JSON.parse(raw), null, 2)
+  } catch {
+    return String(raw)
   }
 }
+
+async function openDetail(row: any) {
+  if (!row?.id) return
+  const res = await api.snapshot(row.id)
+  detail.value = res.data
+  drawerTitle.value = `快照 ${row.date}`
+  drawer.value = true
+}
 </script>
+
+<style scoped>
+.snap-page {
+  max-width: 1100px;
+}
+
+.filter-card {
+  border-radius: 8px;
+}
+
+.toolbar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.day-panel {
+  margin-top: 20px;
+}
+
+.day-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  padding-left: 10px;
+  border-left: 3px solid var(--el-color-primary, #409eff);
+}
+
+.day-date {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 10px;
+}
+
+.pager {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 20px;
+}
+
+.raw {
+  white-space: pre-wrap;
+  word-break: break-all;
+  font-size: 12px;
+  background: var(--el-fill-color-light, #f5f7fa);
+  padding: 12px;
+  border-radius: 6px;
+}
+</style>
