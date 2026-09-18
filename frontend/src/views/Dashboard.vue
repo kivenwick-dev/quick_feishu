@@ -65,6 +65,8 @@
         <el-table-column prop="error_msg" label="错误" />
       </el-table>
     </div>
+
+    <CollectionIssuesDialog v-model="issuesDialog" :issues="issues" />
   </div>
 </template>
 
@@ -72,6 +74,8 @@
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import api from '../api'
+import CollectionIssuesDialog from '../components/CollectionIssuesDialog.vue'
+import type { Issue } from '../collectionIssues'
 import MetricCard from '../components/MetricCard.vue'
 import { createTestPreview } from '../testPreview'
 
@@ -86,6 +90,8 @@ function removeTest() {
   ElMessage.success('测试数据已删除，已恢复真实快照')
 }
 const logs = ref<any[]>([])
+const issues = ref<Issue[]>([])
+const issuesDialog = ref(false)
 
 async function load() {
   const res = await api.dashboard()
@@ -100,6 +106,8 @@ async function runSnapshot() {
   try {
     const res = await api.runSnapshot()
     ElMessage.success(`快照已采集: ${res.data.date}`)
+    issues.value = res.data.issues || []
+    if (issues.value.length) issuesDialog.value = true
     load()
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.error || '采集失败')

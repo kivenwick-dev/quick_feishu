@@ -52,6 +52,8 @@
         <span class="hint">重启定时任务并重新采集当天快照，使新账号/令牌/时间立即生效</span>
       </div>
     </div>
+
+    <CollectionIssuesDialog v-model="issuesDialog" :issues="issues" />
   </div>
 </template>
 
@@ -59,6 +61,8 @@
 import { onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import api from '../api'
+import CollectionIssuesDialog from '../components/CollectionIssuesDialog.vue'
+import type { Issue } from '../collectionIssues'
 
 const cfg = ref<any>({ app: { port: 8080 }, account: {}, feishu: {}, schedule: {} })
 const configured = ref<Record<string, boolean>>({})
@@ -67,6 +71,8 @@ const snapshotTime = ref('00:00')
 const reportTime = ref('10:30')
 const status = ref<any>({})
 const restarting = ref(false)
+const issues = ref<Issue[]>([])
+const issuesDialog = ref(false)
 
 async function load() {
   const res = await api.getSettings()
@@ -95,10 +101,16 @@ function fmt(t?: string) {
   return d.toLocaleString('zh-CN', { hour12: false })
 }
 
-async function save() {
+// persist 将表单写入 config.yaml，供保存与「应用配置并重启」共用，
+// 确保重启时 App.Restart 从磁盘重载的是当前页面上的配置。
+async function persist() {
   cfg.value.schedule = { snapshot_time: snapshotTime.value, report_time: reportTime.value }
+  await api.saveSettings(cfg.value)
+}
+
+async function save() {
   try {
-    await api.saveSettings(cfg.value)
+    await persist()
     await load()
     ElMessage.success('设置已保存')
   } catch (e: any) {
@@ -109,16 +121,17 @@ async function save() {
 async function restart() {
   restarting.value = true
   try {
+    await persist()
     const res = await api.restartScheduler()
     const data = res.data || {}
+    issues.value = data.snapshot_issues || []
     if (data.snapshot_error) {
       ElMessage.warning('定时任务已重启，但快照采集失败：' + data.snapshot_error)
-    } else if (data.snapshot_warnings && data.snapshot_warnings.length) {
-      ElMessage.warning('已重启并采集，但有告警：' + data.snapshot_warnings.join('; '))
-    } else {
+    } else if (!issues.value.length) {
       ElMessage.success('已应用配置并重新采集当天快照')
     }
-    await loadStatus()
+    if (issues.value.length) issuesDialog.value = true
+    await load()
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.error || '重启失败')
   } finally {
