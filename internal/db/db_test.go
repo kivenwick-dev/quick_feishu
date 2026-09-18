@@ -1,6 +1,8 @@
 package db
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -18,5 +20,19 @@ func TestInitMigrations(t *testing.T) {
 		if err := gdb.Table(tbl).Count(&count).Error; err != nil {
 			t.Fatalf("%s table missing: %v", tbl, err)
 		}
+	}
+}
+
+func TestInitCreatesDataDir(t *testing.T) {
+	base := t.TempDir()
+	nested := filepath.Join(base, "does", "not", "exist")
+	if _, err := os.Stat(nested); !os.IsNotExist(err) {
+		t.Fatalf("precondition: dir should not exist")
+	}
+	if _, err := Init(nested); err != nil {
+		t.Fatalf("Init should create the data dir: %v", err)
+	}
+	if info, err := os.Stat(nested); err != nil || !info.IsDir() {
+		t.Fatalf("data dir not created: %v", err)
 	}
 }
