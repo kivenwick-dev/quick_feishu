@@ -1,0 +1,9 @@
+.DS_Store
+config.yaml
+data/*
+dist/
+*.db
+quick-feishu
+node_modules/
+frontend/dist/
+!data/.gitkeep
