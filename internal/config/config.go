@@ -1,6 +1,8 @@
 package config
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 
 	"gopkg.in/yaml.v3"
@@ -48,13 +50,19 @@ func Default() *Config {
 func Load(path string) (*Config, error) {
 	cfg := Default()
 	data, err := os.ReadFile(path)
-	if err == nil {
-		if err := yaml.Unmarshal(data, cfg); err != nil {
+	if err != nil {
+		if !errors.Is(err, fs.ErrNotExist) {
 			return nil, err
 		}
+		out, merr := yaml.Marshal(cfg)
+		if merr != nil {
+			return nil, merr
+		}
+		if werr := os.WriteFile(path, out, 0644); werr != nil {
+			return nil, werr
+		}
 	} else {
-		out, _ := yaml.Marshal(cfg)
-		if err := os.WriteFile(path, out, 0644); err != nil {
+		if err := yaml.Unmarshal(data, cfg); err != nil {
 			return nil, err
 		}
 	}
@@ -84,7 +92,7 @@ func (c *Config) Save(path string) error {
 }
 
 // EnvOverridden 返回被环境变量覆盖的字段名集合
-func (c *Config) EnvOverridden() map[string]bool {
+func EnvOverridden() map[string]bool {
 	m := map[string]bool{}
 	if os.Getenv("QR_USER_ID") != "" {
 		m["user_id"] = true

@@ -37,8 +37,7 @@ func TestLoadReadsExisting(t *testing.T) {
 func TestEnvOverride(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
-	os.Setenv("QR_USER_ID", "env-user")
-	defer os.Unsetenv("QR_USER_ID")
+	t.Setenv("QR_USER_ID", "env-user")
 	cfg, err := Load(path)
 	if err != nil {
 		t.Fatal(err)
@@ -46,7 +45,7 @@ func TestEnvOverride(t *testing.T) {
 	if cfg.Account.UserID != "env-user" {
 		t.Errorf("expected env override, got %s", cfg.Account.UserID)
 	}
-	if !cfg.EnvOverridden()["user_id"] {
+	if !EnvOverridden()["user_id"] {
 		t.Error("user_id should be marked env-overridden")
 	}
 }
@@ -59,8 +58,20 @@ func TestSave(t *testing.T) {
 	if err := cfg.Save(path); err != nil {
 		t.Fatal(err)
 	}
-	reloaded, _ := Load(path)
+	reloaded, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if reloaded.Account.UserID != "999" {
 		t.Errorf("expected 999 after save, got %s", reloaded.Account.UserID)
+	}
+}
+
+func TestLoadInvalidYAML(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	os.WriteFile(path, []byte("::: not valid yaml :::\n"), 0644)
+	if _, err := Load(path); err == nil {
+		t.Fatal("expected error for invalid YAML")
 	}
 }
