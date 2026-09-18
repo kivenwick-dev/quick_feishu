@@ -46,7 +46,10 @@ func (h *Handlers) SendReport(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "no snapshots yet, run snapshot first"})
 		return
 	}
-	prev, _ := db.SnapshotBefore(h.DB, addDays(latest.SnapshotDate, -1))
+	var prev *model.Snapshot
+	if p, perr := db.SnapshotBefore(h.DB, addDays(latest.SnapshotDate, -1)); perr == nil {
+		prev = p
+	}
 	tmpl, _ := report.TemplateFromMap(h.Config.ReportTemplate)
 	if tmpl == nil {
 		tmpl = report.DefaultTemplate()
