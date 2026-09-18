@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
-import ElementPlus from 'element-plus'
+import ElementPlus, { ElDialog } from 'element-plus'
 import CollectionIssuesDialog from './CollectionIssuesDialog.vue'
 
 const issues = [
@@ -28,5 +28,23 @@ describe('CollectionIssuesDialog', () => {
     await nextTick()
     await nextTick()
     expect(wrapper.findAll('.issue-group').length).toBe(0)
+  })
+
+  it('emits update:modelValue false when the dialog closes', async () => {
+    const wrapper = mount(CollectionIssuesDialog, {
+      props: { modelValue: true, issues },
+      global: { plugins: [ElementPlus], stubs: { teleport: true } },
+    })
+    wrapper.findComponent(ElDialog).vm.$emit('update:modelValue', false)
+    expect(wrapper.emitted('update:modelValue')?.[0]).toEqual([false])
+  })
+
+  it('does not render the quota alert for other kinds', async () => {
+    const wrapper = mount(CollectionIssuesDialog, {
+      props: { modelValue: true, issues: [{ scope: 'usage', token_name: 't', kind: 'network', status: 0, detail: 'timeout' }] },
+      global: { plugins: [ElementPlus], stubs: { teleport: true } },
+    })
+    await nextTick()
+    expect(wrapper.find('.quota-alert').exists()).toBe(false)
   })
 })
