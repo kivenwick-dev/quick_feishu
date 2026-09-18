@@ -8,18 +8,18 @@
     <div class="panel">
       <el-form label-width="140px" style="max-width: 680px">
         <el-form-item label="账号ID">
-          <el-input v-model="cfg.account.user_id" :disabled="env.user_id" />
+          <el-input v-model="cfg.account.user_id" :placeholder="configured.user_id ? '已配置，留空保持不变' : '未配置'" :disabled="env.user_id" />
           <span v-if="env.user_id" class="hint">已由环境变量 QR_USER_ID 提供</span>
         </el-form-item>
         <el-form-item label="系统令牌">
-          <el-input v-model="cfg.account.system_token" type="password" show-password :disabled="env.system_token" />
+          <el-input v-model="cfg.account.system_token" :placeholder="configured.system_token ? '已配置，留空保持不变' : '未配置'" type="password" show-password :disabled="env.system_token" />
           <span v-if="env.system_token" class="hint">已由环境变量 QR_SYSTEM_TOKEN 提供</span>
         </el-form-item>
         <el-form-item label="API 地址">
-          <el-input v-model="cfg.account.api_base" />
+          <el-input v-model="cfg.account.api_base" :placeholder="configured.api_base ? '已配置，留空保持不变' : '未配置'" />
         </el-form-item>
         <el-form-item label="飞书 Webhook">
-          <el-input v-model="cfg.feishu.webhook_url" :disabled="env.webhook_url" />
+          <el-input v-model="cfg.feishu.webhook_url" :placeholder="configured.webhook_url ? '已配置，留空保持不变' : '未配置'" :disabled="env.webhook_url" />
           <span v-if="env.webhook_url" class="hint">已由环境变量 QR_FEISHU_WEBHOOK 提供</span>
         </el-form-item>
         <el-form-item label="快照时间">
@@ -61,6 +61,7 @@ import { ElMessage } from 'element-plus'
 import api from '../api'
 
 const cfg = ref<any>({ app: { port: 8080 }, account: {}, feishu: {}, schedule: {} })
+const configured = ref<Record<string, boolean>>({})
 const env = ref<Record<string, boolean>>({})
 const snapshotTime = ref('00:00')
 const reportTime = ref('10:30')
@@ -71,6 +72,7 @@ async function load() {
   const res = await api.getSettings()
   cfg.value = res.data.config || cfg.value
   env.value = res.data.env_overridden || {}
+  configured.value = res.data.configured || {}
   snapshotTime.value = cfg.value.schedule?.snapshot_time || '00:00'
   reportTime.value = cfg.value.schedule?.report_time || '10:30'
   await loadStatus()
@@ -97,6 +99,7 @@ async function save() {
   cfg.value.schedule = { snapshot_time: snapshotTime.value, report_time: reportTime.value }
   try {
     await api.saveSettings(cfg.value)
+    await load()
     ElMessage.success('设置已保存')
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.error || '保存失败')

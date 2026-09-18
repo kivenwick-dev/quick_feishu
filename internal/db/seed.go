@@ -25,6 +25,44 @@ var accountSeeds = []dictSeed{
 	{"group", "string", "分组名", ""},
 	{"created_at", "int", "创建时间", "Unix时间戳"},
 	{"email", "string", "邮箱", ""},
+	{"DeletedAt", "string", "删除时间", ""},
+	{"access_token", "string", "访问令牌", ""},
+	{"account", "string", "账户", ""},
+	{"aff_code", "string", "邀请码", ""},
+	{"aff_count", "int", "邀请人数", ""},
+	{"aff_history_quota", "int", "历史邀请奖励配额", ""},
+	{"aff_quota", "int", "可用邀请奖励配额", ""},
+	{"alipay_account", "string", "支付宝账号", ""},
+	{"alipay_real_name", "string", "支付宝实名", ""},
+	{"bulk_topup_discount_disabled", "bool", "禁用批量充值折扣", ""},
+	{"cost_price_marker", "string", "成本价格标记", ""},
+	{"github_id", "string", "GitHub 用户标识", ""},
+	{"google_id", "string", "谷歌用户标识", ""},
+	{"hongming_id", "string", "鸿鸣用户标识", ""},
+	{"inviter_id", "int", "邀请人标识", ""},
+	{"invoice_returned_quota", "int", "已退回发票配额", ""},
+	{"linux_do_id", "string", "Linux DO 用户标识", ""},
+	{"oidc_id", "string", "统一身份认证标识", ""},
+	{"original_password", "string", "原始密码", ""},
+	{"owner_sub_station_id", "int", "所属子站标识", ""},
+	{"parent_id", "int", "上级账号标识", ""},
+	{"password", "string", "密码", ""},
+	{"password_version", "int", "密码版本", ""},
+	{"phone", "string", "手机号", ""},
+	{"real_name", "string", "真实姓名", ""},
+	{"setting", "string", "个人设置", ""},
+	{"star_level", "int", "星级", ""},
+	{"stripe_customer", "string", "Stripe 客户标识", ""},
+	{"support_online", "bool", "在线客服开关", ""},
+	{"support_online_at", "int", "在线客服时间", ""},
+	{"support_ticket_cap", "int", "工单数量上限", ""},
+	{"telegram_id", "string", "Telegram 用户标识", ""},
+	{"top_up_rebate_count", "int", "充值返利次数", ""},
+	{"usdt_address", "string", "泰达币收款地址", ""},
+	{"usdt_chain", "string", "泰达币网络", ""},
+	{"verification_code", "string", "验证码", ""},
+	{"wechat_id", "string", "微信标识", ""},
+	{"withdrawn_quota", "int", "已提现配额", ""},
 }
 
 var tokenSeeds = []dictSeed{
@@ -58,21 +96,21 @@ var usageSeeds = []dictSeed{
 	{"unlimited_quota", "bool", "无限配额", ""},
 }
 
-// SeedDicts 仅当字典表为空时填充内置字段
+// SeedDicts 增量补齐内置字段，保留用户自定义名称。
 func SeedDicts(gdb *gorm.DB) error {
-	if err := seedIfEmpty(gdb, &model.DictAccountField{}, accountSeeds,
+	if err := seedMissing(gdb, &model.DictAccountField{}, accountSeeds,
 		func(p, t, l, d string) interface{} {
 			return &model.DictAccountField{FieldPath: p, FieldType: t, Label: l, Description: d, IsDefault: true}
 		}); err != nil {
 		return err
 	}
-	if err := seedIfEmpty(gdb, &model.DictTokenField{}, tokenSeeds,
+	if err := seedMissing(gdb, &model.DictTokenField{}, tokenSeeds,
 		func(p, t, l, d string) interface{} {
 			return &model.DictTokenField{FieldPath: p, FieldType: t, Label: l, Description: d, IsDefault: true}
 		}); err != nil {
 		return err
 	}
-	if err := seedIfEmpty(gdb, &model.DictUsageField{}, usageSeeds,
+	if err := seedMissing(gdb, &model.DictUsageField{}, usageSeeds,
 		func(p, t, l, d string) interface{} {
 			return &model.DictUsageField{FieldPath: p, FieldType: t, Label: l, Description: d, IsDefault: true}
 		}); err != nil {
@@ -81,16 +119,21 @@ func SeedDicts(gdb *gorm.DB) error {
 	return nil
 }
 
-func seedIfEmpty(gdb *gorm.DB, dest interface{}, seeds []dictSeed, make func(p, t, l, d string) interface{}) error {
-	var count int64
-	if err := gdb.Model(dest).Count(&count).Error; err != nil {
-		return err
-	}
-	if count > 0 {
-		return nil
-	}
+func seedMissing(gdb *gorm.DB, dest interface{}, seeds []dictSeed, make func(p, t, l, d string) interface{}) error {
 	for _, s := range seeds {
-		if err := gdb.Create(make(s.path, s.typ, s.label, s.desc)).Error; err != nil {
+		var count int64
+		if err := gdb.Model(dest).Where("field_path = ?", s.path).Count(&count).Error; err != nil {
+			return err
+		}
+		if count == 0 {
+			if err := gdb.Create(make(s.path, s.typ, s.label, s.desc)).Error; err != nil {
+				return err
+			}
+			continue
+		}
+		// 修复空名称和以原始字段名占位的旧记录，不覆盖已有中文名称。
+		if err := gdb.Model(dest).Where("field_path = ? AND (label = '' OR label IS NULL OR label = ?)", s.path, s.path).
+			Update("label", s.label).Error; err != nil {
 			return err
 		}
 	}

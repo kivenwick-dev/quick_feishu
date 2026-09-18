@@ -46,7 +46,7 @@ func (a *App) Client() *api.Client {
 	return a.client
 }
 
-// RunSnapshot 采集并保存当天快照（按日期覆盖）
+// RunSnapshot 采集并新增快照，保留同一天的每次采集记录。
 func (a *App) RunSnapshot() (*collector.Result, error) {
 	res := collector.Collect(a.Client())
 	if err := collector.Save(a.DB, Today(), res); err != nil {
@@ -85,14 +85,17 @@ func (a *App) SaveConfig(in *config.Config) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	env := config.EnvOverridden()
-	if env["user_id"] {
+	if env["user_id"] || in.Account.UserID == "" {
 		in.Account.UserID = a.Config.Account.UserID
 	}
-	if env["system_token"] {
+	if env["system_token"] || in.Account.SystemToken == "" {
 		in.Account.SystemToken = a.Config.Account.SystemToken
 	}
-	if env["webhook_url"] {
+	if env["webhook_url"] || in.Feishu.WebhookURL == "" {
 		in.Feishu.WebhookURL = a.Config.Feishu.WebhookURL
+	}
+	if in.Account.APIBase == "" {
+		in.Account.APIBase = a.Config.Account.APIBase
 	}
 	*a.Config = *in
 	return a.Config.Save(a.ConfigPath)

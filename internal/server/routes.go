@@ -14,6 +14,10 @@ var webFS embed.FS
 
 func (s *Server) RegisterRoutes(h *Handlers) {
 	api := s.Engine.Group("/api")
+	api.Use(func(c *gin.Context) {
+		c.Header("Cache-Control", "no-store")
+		c.Next()
+	})
 	{
 		api.GET("/dashboard", h.Dashboard)
 		api.POST("/snapshot/run", h.RunSnapshot)

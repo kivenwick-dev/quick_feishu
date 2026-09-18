@@ -47,6 +47,7 @@ const route = useRoute()
 }
 
 .app-main {
+  min-width: 0;
   background: var(--el-bg-color-page, #f5f7fa);
 }
 </style>

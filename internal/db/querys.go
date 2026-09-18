@@ -18,7 +18,7 @@ func LatestSnapshot(gdb *gorm.DB) (*model.Snapshot, error) {
 // SnapshotByDate 按日期取快照
 func SnapshotByDate(gdb *gorm.DB, date string) (*model.Snapshot, error) {
 	var s model.Snapshot
-	err := gdb.Where("snapshot_date = ?", date).First(&s).Error
+	err := gdb.Where("snapshot_date = ?", date).Order("id DESC").First(&s).Error
 	return &s, err
 }
 
@@ -40,7 +40,7 @@ func TokenSnapshots(gdb *gorm.DB, snapshotID uint) ([]model.TokenSnapshot, error
 func SnapshotsInRange(gdb *gorm.DB, from, to string) ([]model.Snapshot, error) {
 	var list []model.Snapshot
 	err := gdb.Where("snapshot_date >= ? AND snapshot_date <= ?", from, to).
-		Order("snapshot_date ASC").Find(&list).Error
+		Order("snapshot_date ASC, id ASC").Find(&list).Error
 	return list, err
 }
 
@@ -127,4 +127,12 @@ func LatestTokens(gdb *gorm.DB) ([]model.TokenSnapshot, error) {
 		return nil, err
 	}
 	return TokenSnapshots(gdb, latest.ID)
+}
+
+// PreviousSnapshot 返回展示顺序中紧邻当前记录的上一条，包含同日采集。
+func PreviousSnapshot(gdb *gorm.DB, current *model.Snapshot) (*model.Snapshot, error) {
+	var previous model.Snapshot
+	err := gdb.Where("snapshot_date < ? OR (snapshot_date = ? AND id < ?)", current.SnapshotDate, current.SnapshotDate, current.ID).
+		Order("snapshot_date DESC, id DESC").First(&previous).Error
+	return &previous, err
 }

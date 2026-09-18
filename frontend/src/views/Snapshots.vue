@@ -2,7 +2,7 @@
   <div class="snap-page">
     <div class="page-head">
       <h2>历史快照</h2>
-      <p class="sub">每日全字段指标卡片 · 变动为相对前一日（增红 / 减绿）</p>
+      <p class="sub">每次采集独立保存 · 变动相对上次采集（增红 / 减绿） · 北京时间</p>
     </div>
 
     <el-card shadow="never" class="filter-card">
@@ -15,11 +15,12 @@
         <el-select
           v-if="source === 'usage'"
           v-model="tokenId"
-          placeholder="选择令牌"
+          placeholder="选择令牌名称"
+          filterable
           style="width: 220px"
           @change="load"
         >
-          <el-option v-for="tk in tokens" :key="tk.token_id" :value="tk.token_id" :label="tk.name" />
+          <el-option v-for="tk in tokens" :key="tk.token_id" :value="tk.token_id" :label="tk.token_name || '未命名令牌'" />
         </el-select>
 
         <el-date-picker
@@ -48,12 +49,12 @@
 
     <el-empty v-if="filteredRows.length === 0" description="暂无历史数据" :image-size="80" style="margin-top: 24px" />
 
-    <div v-for="row in pagedRows" :key="row.id" class="day-panel">
+    <div v-for="row in pagedRows" :key="row.id" class="day-panel metric-panel">
       <div class="day-head">
-        <span class="day-date">{{ row.date }}</span>
-        <el-button link type="primary" size="small" @click="openDetail(row)">查看原始数据</el-button>
+        <span class="day-date">{{ formatSnapshotTime(row.captured_at, row.date) }}</span>
+        <el-tag size="small" type="info">快照 #{{ row.id }}</el-tag>
       </div>
-      <div class="grid">
+      <div class="metric-grid">
         <MetricCard
           v-for="f in shownFields"
           :key="f.path"
@@ -67,22 +68,16 @@
     <div class="pager">
       <el-pagination
         v-model:current-page="page"
-        :page-size="pageSize"
+        v-model:page-size="pageSize"
         :total="filteredRows.length"
-        layout="total, sizes, prev, pager, next"
-        :page-sizes="[3, 6, 12, 24]"
+        layout="total, sizes, prev, pager, next, jumper"
+        :page-sizes="[1, 3, 6, 12, 24]"
         background
         @size-change="onFilterChange"
       />
     </div>
 
-    <el-drawer v-model="drawer" :title="drawerTitle" size="60%">
-      <el-tabs v-if="detail">
-        <el-tab-pane label="账号信息"><pre class="raw">{{ pretty(detail.snapshot.account_raw) }}</pre></el-tab-pane>
-        <el-tab-pane label="令牌列表"><pre class="raw">{{ pretty(detail.snapshot.token_list_raw) }}</pre></el-tab-pane>
-        <el-tab-pane label="令牌使用情况"><pre class="raw">{{ pretty(detail.snapshot.token_usage_raw) }}</pre></el-tab-pane>
-      </el-tabs>
-    </el-drawer>
+
   </div>
 </template>
 
@@ -90,6 +85,7 @@
 import { computed, onMounted, ref } from 'vue'
 import api from '../api'
 import MetricCard from '../components/MetricCard.vue'
+import { formatSnapshotTime } from '../snapshotTime'
 
 const source = ref<'account' | 'usage'>('account')
 const tokenId = ref<number | undefined>(undefined)
@@ -101,10 +97,6 @@ const rows = ref<any[]>([])
 const range = ref<string[] | null>(null)
 const page = ref(1)
 const pageSize = ref(6)
-
-const drawer = ref(false)
-const detail = ref<any>(null)
-const drawerTitle = ref('')
 
 const shownFields = computed(() => {
   if (!visibleFields.value.length) return allFields.value
@@ -148,9 +140,9 @@ async function load() {
     allFields.value = []
     return
   }
-  const res = await api.history(source.value, source.value === 'usage' ? tokenId.value : undefined, 180)
+  const res = await api.history(source.value, source.value === 'usage' ? tokenId.value : undefined, 0)
   allFields.value = res.data.fields || []
-  rows.value = (res.data.rows || []).slice().reverse() // 日期降序
+  rows.value = (res.data.rows || []).slice().reverse() // 按日期及采集顺序倒序
   visibleFields.value = allFields.value.map((f: any) => f.path)
   page.value = 1
 }
@@ -167,28 +159,13 @@ onMounted(async () => {
   await load()
 })
 
-function pretty(raw: any) {
-  if (raw === null || raw === undefined) return ''
-  if (typeof raw === 'object') return JSON.stringify(raw, null, 2)
-  try {
-    return JSON.stringify(JSON.parse(raw), null, 2)
-  } catch {
-    return String(raw)
-  }
-}
-
-async function openDetail(row: any) {
-  if (!row?.id) return
-  const res = await api.snapshot(row.id)
-  detail.value = res.data
-  drawerTitle.value = `快照 ${row.date}`
-  drawer.value = true
-}
 </script>
 
 <style scoped>
 .snap-page {
-  max-width: 1100px;
+  width: 100%;
+  min-width: 0;
+  container-type: inline-size;
 }
 
 .filter-card {
@@ -203,15 +180,20 @@ async function openDetail(row: any) {
 }
 
 .day-panel {
-  margin-top: 20px;
+  margin-top: 24px;
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 2px 6px #0f172a06;
 }
 
 .day-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 12px;
-  padding-left: 10px;
+  margin-bottom: 16px;
+  padding: 0 0 14px 10px;
+  gap: 12px;
+  flex-wrap: wrap;
+  border-bottom: 1px solid #dce3ec;
   border-left: 3px solid var(--el-color-primary, #409eff);
 }
 
@@ -220,16 +202,11 @@ async function openDetail(row: any) {
   font-weight: 600;
 }
 
-.grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
-  gap: 10px;
-}
-
 .pager {
   display: flex;
   justify-content: flex-end;
   margin-top: 20px;
+  overflow-x: auto;
 }
 
 .raw {

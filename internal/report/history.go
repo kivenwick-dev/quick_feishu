@@ -3,6 +3,7 @@ package report
 import (
 	"encoding/json"
 	"sort"
+	"time"
 
 	"gorm.io/gorm"
 	"quick-feishu/internal/db"
@@ -15,12 +16,13 @@ type HistoryField struct {
 	Label string `json:"label"`
 }
 
-// HistoryRow 历史表一行（一天）：Values 今日各字段值，Deltas 相对前一天的带符号变动
+// HistoryRow 每条采集记录，Deltas 相对上一次可用记录的带符号变动。
 type HistoryRow struct {
-	ID     uint              `json:"id"`
-	Date   string            `json:"date"`
-	Values map[string]string `json:"values"`
-	Deltas map[string]string `json:"deltas"`
+	CapturedAt time.Time         `json:"captured_at"`
+	ID         uint              `json:"id"`
+	Date       string            `json:"date"`
+	Values     map[string]string `json:"values"`
+	Deltas     map[string]string `json:"deltas"`
 }
 
 // History 某接口的每日指标矩阵
@@ -126,6 +128,7 @@ func BuildAccountHistory(gdb *gorm.DB, limit int) *History {
 		}, prev)
 		row.ID = s.ID
 		row.Date = s.SnapshotDate
+		row.CapturedAt = s.CreatedAt
 		prev = cur
 		h.Rows = append(h.Rows, row)
 	}
@@ -136,9 +139,10 @@ func BuildAccountHistory(gdb *gorm.DB, limit int) *History {
 func BuildUsageHistory(gdb *gorm.DB, tokenID int, limit int) *History {
 	snaps := recentSnapshots(gdb, limit)
 	type entry struct {
-		date string
-		sid  uint
-		tok  model.TokenSnapshot
+		date       string
+		capturedAt time.Time
+		sid        uint
+		tok        model.TokenSnapshot
 	}
 	var entries []entry
 	var raws [][]byte
@@ -146,13 +150,14 @@ func BuildUsageHistory(gdb *gorm.DB, tokenID int, limit int) *History {
 		toks, _ := db.TokenSnapshots(gdb, s.ID)
 		for _, t := range toks {
 			if t.TokenID == tokenID {
-				entries = append(entries, entry{date: s.SnapshotDate, sid: s.ID, tok: t})
-				raws = append(raws, []byte(t.UsageRaw))
+				entries = append(entries, entry{date: s.SnapshotDate, capturedAt: s.CreatedAt, sid: s.ID, tok: t})
+				raws = append(raws, []byte(t.UsageRaw), []byte(t.ListRaw))
 				break
 			}
 		}
 	}
-	fields := buildFields(dictHistoryFields(gdb, "usage"), raws)
+	dict := append(dictHistoryFields(gdb, "usage"), dictHistoryFields(gdb, "token")...)
+	fields := buildFields(dict, raws)
 
 	h := &History{Source: "usage", Fields: fields, Rows: []HistoryRow{}}
 	var prev map[string]interface{}
@@ -163,6 +168,7 @@ func BuildUsageHistory(gdb *gorm.DB, tokenID int, limit int) *History {
 		}, prev)
 		row.ID = e.sid
 		row.Date = e.date
+		row.CapturedAt = e.capturedAt
 		prev = cur
 		h.Rows = append(h.Rows, row)
 	}

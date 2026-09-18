@@ -63,3 +63,41 @@ func TestClientRebuiltOnRestart(t *testing.T) {
 		t.Errorf("client token not rebuilt: %s", got)
 	}
 }
+
+func TestSaveSettingsPreservesWriteOnlyCredentials(t *testing.T) {
+	for _, key := range []string{"QR_USER_ID", "QR_SYSTEM_TOKEN", "QR_FEISHU_WEBHOOK"} {
+		t.Setenv(key, "")
+	}
+	gdb, err := db.Init(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Default()
+	cfg.Account.UserID = "existing-account"
+	cfg.Account.SystemToken = "existing-token"
+	cfg.Account.APIBase = "https://example.test"
+	cfg.Feishu.WebhookURL = "https://example.test/webhook"
+	a := New(cfg, gdb, filepath.Join(t.TempDir(), "config.yaml"))
+	expectedAccount, expectedFeishu := cfg.Account, cfg.Feishu
+	incoming := *cfg
+	incoming.Account = config.AccountConfig{}
+	incoming.Feishu.WebhookURL = ""
+	incoming.Schedule.ReportTime = "12:34"
+	if err := a.SaveConfig(&incoming); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Account != expectedAccount || cfg.Feishu != expectedFeishu {
+		t.Fatal("blank settings overwrote credentials")
+	}
+	if cfg.Schedule.ReportTime != "12:34" {
+		t.Fatal("non-secret setting not saved")
+	}
+	incoming = *cfg
+	incoming.Account.SystemToken = "replacement-token"
+	if err := a.SaveConfig(&incoming); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Account.SystemToken != "replacement-token" {
+		t.Fatal("new credential not saved")
+	}
+}

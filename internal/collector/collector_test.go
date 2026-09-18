@@ -114,7 +114,7 @@ func TestSaveStoresUnknownFields(t *testing.T) {
 	}
 }
 
-func TestSaveUpsertsSameDate(t *testing.T) {
+func TestSaveRetainsSameDateCaptures(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/user/self":
@@ -146,13 +146,13 @@ func TestSaveUpsertsSameDate(t *testing.T) {
 
 	var snapCount int64
 	gdb.Model(&model.Snapshot{}).Count(&snapCount)
-	if snapCount != 1 {
-		t.Errorf("snapshots = %d, want 1 (same date should upsert)", snapCount)
+	if snapCount != 2 {
+		t.Errorf("snapshots = %d, want 2 (same date captures must be retained)", snapCount)
 	}
 	var tokCount int64
 	gdb.Model(&model.TokenSnapshot{}).Count(&tokCount)
-	if tokCount != 2 {
-		t.Errorf("token snapshots = %d, want 2 (no orphans)", tokCount)
+	if tokCount != 4 {
+		t.Errorf("token snapshots = %d, want 4 (two per capture)", tokCount)
 	}
 
 	// 另一天应新增而非覆盖
@@ -160,7 +160,7 @@ func TestSaveUpsertsSameDate(t *testing.T) {
 		t.Fatal(err)
 	}
 	gdb.Model(&model.Snapshot{}).Count(&snapCount)
-	if snapCount != 2 {
-		t.Errorf("snapshots = %d, want 2 after new date", snapCount)
+	if snapCount != 3 {
+		t.Errorf("snapshots = %d, want 3 after new date", snapCount)
 	}
 }

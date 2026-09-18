@@ -16,14 +16,14 @@ func (h *Handlers) GetHistory(c *gin.Context) {
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "30"))
 	switch source {
 	case "account":
-		c.JSON(http.StatusOK, report.BuildAccountHistory(h.DB, limit))
+		c.JSON(http.StatusOK, publicHistory(report.BuildAccountHistory(h.DB, limit)))
 	case "usage":
 		tokenID, _ := strconv.Atoi(c.Query("token_id"))
 		if tokenID == 0 {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "token_id required"})
 			return
 		}
-		c.JSON(http.StatusOK, report.BuildUsageHistory(h.DB, tokenID, limit))
+		c.JSON(http.StatusOK, publicHistory(report.BuildUsageHistory(h.DB, tokenID, limit)))
 	default:
 		c.JSON(http.StatusBadRequest, gin.H{"error": "bad source"})
 	}
@@ -55,13 +55,27 @@ func (h *Handlers) GetLatest(c *gin.Context) {
 		return
 	}
 	var prev *model.Snapshot
-	if p, e := db.SnapshotBefore(h.DB, addDays(latest.SnapshotDate, -1)); e == nil {
+	if p, e := db.PreviousSnapshot(h.DB, latest); e == nil {
 		prev = p
 	}
 	tmpl, _ := report.TemplateFromMap(h.Config.ReportTemplate)
 	if tmpl == nil {
 		tmpl = report.DefaultTemplate()
 	}
-	sections := report.BuildSections(h.DB, latest, prev, tmpl)
+	latest.AccountRaw = publicAccountRaw(latest.AccountRaw)
+	if prev != nil {
+		prev.AccountRaw = publicAccountRaw(prev.AccountRaw)
+	}
+	sections := report.BuildSections(h.DB, latest, prev, publicTemplate(tmpl))
+	for i := range sections {
+		for j := range sections[i].Tokens {
+			for k := range sections[i].Tokens[j].Metrics {
+				m := &sections[i].Tokens[j].Metrics[k]
+				if !numericValue(m.Value) {
+					m.Value = "—"
+				}
+			}
+		}
+	}
 	c.JSON(http.StatusOK, gin.H{"date": latest.SnapshotDate, "sections": sections})
 }

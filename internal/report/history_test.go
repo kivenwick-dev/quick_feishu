@@ -2,6 +2,7 @@ package report
 
 import (
 	"testing"
+	"time"
 
 	"quick-feishu/internal/db"
 	"quick-feishu/internal/model"
@@ -89,5 +90,49 @@ func TestBuildUsageHistory(t *testing.T) {
 	// total_granted 无变化 → +0
 	if h.Rows[1].Deltas["total_granted"] != "0" {
 		t.Errorf("granted delta = %q, want 0", h.Rows[1].Deltas["total_granted"])
+	}
+}
+
+func TestSameDayHistoryKeepsCaptureTimesAndDeltas(t *testing.T) {
+	gdb, err := db.Init(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.SeedDicts(gdb)
+	for i := 0; i < 8; i++ {
+		snap := model.Snapshot{SnapshotDate: "2026-09-18", CreatedAt: time.Date(2026, 9, 18, 10, i, 0, 0, time.FixedZone("CST", 8*3600)), AccountRaw: mustJSON(t, map[string]interface{}{"used_quota": 100 + i*10})}
+		if err := gdb.Create(&snap).Error; err != nil {
+			t.Fatal(err)
+		}
+		if err := gdb.Create(&model.TokenSnapshot{SnapshotID: snap.ID, TokenID: 7, UsageRaw: mustJSON(t, map[string]interface{}{"total_used": i * 5})}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	account := BuildAccountHistory(gdb, 0)
+	usage := BuildUsageHistory(gdb, 7, 0)
+	for _, h := range []*History{account, usage} {
+		if len(h.Rows) != 8 {
+			t.Fatalf("rows = %d", len(h.Rows))
+		}
+		for i, row := range h.Rows {
+			if row.CapturedAt.Minute() != i {
+				t.Errorf("capture time lost: %v", row.CapturedAt)
+			}
+			if i > 0 && row.ID <= h.Rows[i-1].ID {
+				t.Error("unstable same-day order")
+			}
+		}
+	}
+	if account.Rows[7].Deltas["used_quota"] != "+10" || usage.Rows[7].Deltas["total_used"] != "+5" {
+		t.Fatal("same-day diff incorrect")
+	}
+	latest, _ := db.LatestSnapshot(gdb)
+	previous, err := db.PreviousSnapshot(gdb, latest)
+	if err != nil || previous.ID != account.Rows[6].ID {
+		t.Fatal("previous same-day snapshot not selected")
+	}
+	daily, _ := db.SnapshotByDate(gdb, "2026-09-18")
+	if daily.ID != latest.ID {
+		t.Fatal("date lookup must pick last capture")
 	}
 }

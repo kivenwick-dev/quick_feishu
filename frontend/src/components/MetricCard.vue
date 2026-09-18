@@ -1,11 +1,18 @@
 <template>
   <div class="mcard">
-    <div class="line1">
-      <span class="label">{{ label }}</span>
-      <span class="value">{{ value === '' || value === null || value === undefined ? '-' : value }}</span>
+    <div class="metric-line">
+      <el-tooltip :content="label" placement="top" :show-after="200" popper-class="metric-tooltip">
+        <span class="metric-label" tabindex="0">{{ label }}：</span>
+      </el-tooltip>
+      <el-tooltip :content="displayValue" placement="top" :show-after="200" popper-class="metric-tooltip">
+        <span class="metric-value" tabindex="0">{{ displayValue }}</span>
+      </el-tooltip>
     </div>
-    <div class="line2">
-      变动：<span :class="cls">{{ delta ? delta : '—' }}</span>
+    <div class="metric-line change-line">
+      <span class="change-label">变动：</span>
+      <el-tooltip :content="displayDelta" placement="top" :show-after="200" popper-class="metric-tooltip">
+        <span class="metric-value" :class="direction" tabindex="0">{{ displayDelta }}</span>
+      </el-tooltip>
     </div>
   </div>
 </template>
@@ -15,65 +22,69 @@ import { computed } from 'vue'
 
 const props = defineProps<{
   label: string
-  value: string | number
-  delta?: string
+  value?: string | number | null
+  delta?: string | number | null
 }>()
 
-// 国内习惯：增(+)红色，减(-)绿色
-const cls = computed(() => {
-  const d = props.delta || ''
-  if (d.startsWith('+')) return 'up'
-  if (d.startsWith('-')) return 'down'
+const displayValue = computed(() =>
+  props.value === '' || props.value == null ? '—' : String(props.value),
+)
+const normalizedDelta = computed(() => String(props.delta ?? '').trim())
+const direction = computed(() => {
+  const value = normalizedDelta.value
+  if (/^[\-−—]\s*\d/.test(value)) return 'down'
+  if (/^\+/.test(value) || /^\d/.test(value) && Number.parseFloat(value.replaceAll(',', '')) > 0) return 'up'
   return 'flat'
+})
+const displayDelta = computed(() => {
+  const value = normalizedDelta.value
+  if (!value) return '暂无对比'
+  if (direction.value === 'down') return value.replace(/^[\-−—]\s*/, '—')
+  if (direction.value === 'up' && !value.startsWith('+')) return `+${value}`
+  return value
 })
 </script>
 
 <style scoped>
 .mcard {
-  background: #fff;
+  min-width: 0;
+  height: 84px;
+  padding: 15px 12px;
+  background: var(--el-bg-color, #fff);
   border: 1px solid var(--el-border-color-lighter, #ebeef5);
   border-radius: 8px;
-  padding: 10px 12px;
+  overflow: hidden;
 }
-
-.line1 {
+.metric-line {
   display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 8px;
-}
-
-.label {
-  color: var(--el-text-color-secondary, #909399);
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  height: 22px;
   font-size: 12px;
+}
+.metric-label {
+  flex: 0 1 auto;
+  max-width: 52%;
+  color: var(--el-text-color-regular, #606266);
+}
+.metric-label,
+.metric-value {
+  min-width: 0;
+  overflow: hidden;
   white-space: nowrap;
+  text-overflow: ellipsis;
 }
-
-.value {
+.metric-value {
+  flex: 1 1 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
   font-weight: 600;
-  font-size: 15px;
-  word-break: break-all;
-  text-align: right;
+  font-size: 13px;
 }
-
-.line2 {
-  margin-top: 6px;
-  font-size: 12px;
-  color: var(--el-text-color-secondary, #909399);
-}
-
-.up {
-  color: #f56c6c;
-  font-weight: 600;
-}
-
-.down {
-  color: #67c23a;
-  font-weight: 600;
-}
-
-.flat {
-  color: var(--el-text-color-secondary, #909399);
-}
+.change-line { margin-top: 8px; }
+.change-label { flex: none; }
+.change-line, .flat { color: var(--el-text-color-secondary, #909399); }
+.up { color: #d9363e; }
+.down { color: #168653; }
 </style>

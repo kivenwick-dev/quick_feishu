@@ -47,7 +47,7 @@ func Collect(c *api.Client) *Result {
 }
 
 // Save 将采集结果（全字段原始 JSON）写入快照表。
-// 按日期覆盖：同一天重复采集会替换旧快照，避免产生多条同日快照。
+// 每次采集新增记录，以 CreatedAt 记录具体时间，同日采集也保留。
 func Save(gdb *gorm.DB, date string, res *Result) error {
 	usageMap := map[string]json.RawMessage{}
 	for id, u := range res.Usages {
@@ -58,21 +58,6 @@ func Save(gdb *gorm.DB, date string, res *Result) error {
 	usageRaw, _ := json.Marshal(usageMap)
 
 	return gdb.Transaction(func(tx *gorm.DB) error {
-		// 1) 删除同日旧快照及其令牌快照
-		var olds []model.Snapshot
-		if err := tx.Where("snapshot_date = ?", date).Find(&olds).Error; err != nil {
-			return err
-		}
-		for _, o := range olds {
-			if err := tx.Where("snapshot_id = ?", o.ID).Delete(&model.TokenSnapshot{}).Error; err != nil {
-				return err
-			}
-			if err := tx.Delete(&model.Snapshot{}, o.ID).Error; err != nil {
-				return err
-			}
-		}
-
-		// 2) 写入新快照
 		snap := &model.Snapshot{SnapshotDate: date}
 		if res.Account != nil {
 			snap.AccountRaw = datatypes.JSON(res.Account.Raw)

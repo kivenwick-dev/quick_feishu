@@ -25,26 +25,26 @@ func (h *Handlers) Dashboard(c *gin.Context) {
 	}
 	var logs []model.SendLog
 	h.DB.Order("id DESC").Limit(10).Find(&logs)
-	c.JSON(http.StatusOK, gin.H{"latest_snapshot": snap, "recent_logs": logs})
+	c.JSON(http.StatusOK, gin.H{"latest_snapshot": publicSnapshot(snap), "recent_logs": publicLogs(logs)})
 }
 
 func (h *Handlers) RunSnapshot(c *gin.Context) {
 	res, err := h.App.RunSnapshot()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "操作失败，请检查输入或服务端配置"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "date": app.Today(), "errors": res.Errors})
+	c.JSON(http.StatusOK, gin.H{"success": true, "date": app.Today(), "errors": publicWarnings(res.Errors)})
 }
 
 func (h *Handlers) SendReport(c *gin.Context) {
 	log, err := h.App.RunReport()
 	if log == nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "操作失败，请检查输入或服务端配置"})
 		return
 	}
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error(), "log_id": log.ID})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "操作失败，请检查输入或服务端配置", "log_id": log.ID})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "log_id": log.ID})
