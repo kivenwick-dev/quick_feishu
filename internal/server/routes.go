@@ -39,9 +39,6 @@ func (s *Server) RegisterRoutes(h *Handlers) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
 			return
 		}
-		if c.Request.URL.Path == "/" {
-			c.Request.URL.Path = "/index.html"
-		}
 		fileServer.ServeHTTP(c.Writer, c.Request)
 	})
 }

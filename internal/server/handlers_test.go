@@ -89,3 +89,27 @@ func TestGetDictAccount(t *testing.T) {
 		t.Errorf("code = %d", w.Code)
 	}
 }
+
+func TestSPARootNoRedirectLoop(t *testing.T) {
+	h := newTestHandlers(t)
+	s := New(0)
+	s.RegisterRoutes(h)
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	s.Engine.ServeHTTP(w, req)
+	if w.Code == http.StatusMovedPermanently || w.Code == http.StatusFound {
+		t.Fatalf("root must not redirect (301/302 loop), got %d location=%q", w.Code, w.Header().Get("Location"))
+	}
+}
+
+func TestUnknownAPIReturns404(t *testing.T) {
+	h := newTestHandlers(t)
+	s := New(0)
+	s.RegisterRoutes(h)
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/does-not-exist", nil)
+	s.Engine.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Errorf("unknown api should be 404, got %d", w.Code)
+	}
+}
