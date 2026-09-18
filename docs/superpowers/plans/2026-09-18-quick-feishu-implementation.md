@@ -1873,8 +1873,14 @@ type HR struct {
 	Tag string `json:"tag"`
 }
 
-// BuildCard 根据模板与字段结果生成卡片
-func BuildCard(tmpl *Template, date string, sections [][]DiffResult) (*Card, error) {
+// SectionResult 一个分区的渲染结果（含分区标题）
+type SectionResult struct {
+	Name   string
+	Fields []DiffResult
+}
+
+// BuildCard 根据模板与分区结果生成卡片
+func BuildCard(tmpl *Template, date string, sections []SectionResult) (*Card, error) {
 	card := &Card{
 		MsgType: "interactive",
 		Card: CardBody{
@@ -1886,12 +1892,24 @@ func BuildCard(tmpl *Template, date string, sections [][]DiffResult) (*Card, err
 			Elements: []interface{}{},
 		},
 	}
-	for i, sec := range sections {
-		if len(sec) == 0 {
+	for _, sec := range sections {
+		if len(sec.Fields) == 0 {
 			continue
 		}
+		if len(card.Card.Elements) > 0 {
+			card.Card.Elements = append(card.Card.Elements, HR{Tag: "hr"})
+		}
+		if sec.Name != "" {
+			card.Card.Elements = append(card.Card.Elements, DivElement{
+				Tag: "div",
+				Fields: []CardField{{
+					IsShort: false,
+					Text:    CardText{Tag: "lark_md", Content: "**" + sec.Name + "**"},
+				}},
+			})
+		}
 		div := DivElement{Tag: "div", Fields: []CardField{}}
-		for _, r := range sec {
+		for _, r := range sec.Fields {
 			content := "**" + r.Label + "**\n" + r.Value
 			div.Fields = append(div.Fields, CardField{
 				IsShort: true,
@@ -1899,9 +1917,6 @@ func BuildCard(tmpl *Template, date string, sections [][]DiffResult) (*Card, err
 			})
 		}
 		card.Card.Elements = append(card.Card.Elements, div)
-		if i < len(sections)-1 {
-			card.Card.Elements = append(card.Card.Elements, HR{Tag: "hr"})
-		}
 	}
 	return card, nil
 }
@@ -2744,7 +2759,7 @@ func ExecuteReport(gdb *gorm.DB, latest, prev *model.Snapshot, tmpl *Template, w
 	if latest == nil {
 		return nil, fmt.Errorf("no snapshots yet")
 	}
-	sections := [][]DiffResult{}
+	sections := []SectionResult{}
 	for _, sec := range tmpl.Sections {
 		var secRes []DiffResult
 		switch sec.Source {
@@ -2772,7 +2787,7 @@ func ExecuteReport(gdb *gorm.DB, latest, prev *model.Snapshot, tmpl *Template, w
 			}
 		}
 		if len(secRes) > 0 {
-			sections = append(sections, secRes)
+			sections = append(sections, SectionResult{Name: sec.Name, Fields: secRes})
 		}
 	}
 	card, err := BuildCard(tmpl, latest.SnapshotDate, sections)
