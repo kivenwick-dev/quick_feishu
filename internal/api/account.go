@@ -20,10 +20,10 @@ type AccountData struct {
 	GroupID      int             `json:"group_id"`
 	Group        string          `json:"group"`
 	CreatedAt    int64           `json:"created_at"`
-	Raw          json.RawMessage `json:"-"`
+	Raw          json.RawMessage `json:"-"` // 原始 data 对象（全字段）
 }
 
-// GetAccount 获取账号信息，返回原始 JSON 供全量存储
+// GetAccount 获取账号信息，返回 data 对象全字段原始 JSON
 func (c *Client) GetAccount() (*AccountData, []byte, error) {
 	headers := map[string]string{
 		"new-api-user":  c.UserID,
@@ -35,10 +35,18 @@ func (c *Client) GetAccount() (*AccountData, []byte, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	var resp AccountResp
-	if err := parseJSON(body, &resp); err != nil {
+	var envelope struct {
+		Data    json.RawMessage `json:"data"`
+		Message string          `json:"message"`
+		Success bool            `json:"success"`
+	}
+	if err := parseJSON(body, &envelope); err != nil {
 		return nil, body, err
 	}
-	resp.Data.Raw = body
-	return &resp.Data, body, nil
+	var d AccountData
+	if err := parseJSON(envelope.Data, &d); err != nil {
+		return nil, envelope.Data, err
+	}
+	d.Raw = envelope.Data
+	return &d, envelope.Data, nil
 }

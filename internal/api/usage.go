@@ -18,7 +18,7 @@ type TokenUsageData struct {
 	TotalGranted       int64           `json:"total_granted"`
 	TotalUsed          int64           `json:"total_used"`
 	UnlimitedQuota     bool            `json:"unlimited_quota"`
-	Raw                json.RawMessage `json:"-"`
+	Raw                json.RawMessage `json:"-"` // 原始 data 对象（全字段）
 }
 
 // GetTokenUsage 获取单个令牌使用情况，tokenKey 是令牌自身 key
@@ -32,10 +32,18 @@ func (c *Client) GetTokenUsage(tokenKey string) (*TokenUsageData, []byte, error)
 	if err != nil {
 		return nil, nil, err
 	}
-	var resp TokenUsageResp
-	if err := parseJSON(body, &resp); err != nil {
+	var envelope struct {
+		Data    json.RawMessage `json:"data"`
+		Message string          `json:"message"`
+		Success bool            `json:"success"`
+	}
+	if err := parseJSON(body, &envelope); err != nil {
 		return nil, body, err
 	}
-	resp.Data.Raw = body
-	return &resp.Data, body, nil
+	var d TokenUsageData
+	if err := parseJSON(envelope.Data, &d); err != nil {
+		return nil, envelope.Data, err
+	}
+	d.Raw = envelope.Data
+	return &d, envelope.Data, nil
 }

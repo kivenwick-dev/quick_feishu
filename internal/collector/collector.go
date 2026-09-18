@@ -46,27 +46,27 @@ func Collect(c *api.Client) *Result {
 	return res
 }
 
-// Save 将采集结果写入快照表
+// Save 将采集结果（全字段原始 JSON）写入快照表
 func Save(gdb *gorm.DB, date string, res *Result) error {
-	accountRaw, _ := json.Marshal(res.Account)
-	tokenListRaw, _ := json.Marshal(res.TokenList)
-	usageMap := map[string]*api.TokenUsageData{}
+	usageMap := map[string]json.RawMessage{}
 	for id, u := range res.Usages {
-		usageMap[fmt.Sprintf("%d", id)] = u
+		if u != nil && len(u.Raw) > 0 {
+			usageMap[fmt.Sprintf("%d", id)] = u.Raw
+		}
 	}
 	usageRaw, _ := json.Marshal(usageMap)
 
-	snap := &model.Snapshot{
-		SnapshotDate:  date,
-		AccountRaw:    accountRaw,
-		TokenListRaw:  tokenListRaw,
-		TokenUsageRaw: usageRaw,
-	}
+	snap := &model.Snapshot{SnapshotDate: date}
 	if res.Account != nil {
+		snap.AccountRaw = datatypes.JSON(res.Account.Raw)
 		snap.AccountQuota = res.Account.Quota
 		snap.AccountUsed = res.Account.UsedQuota
 		snap.RequestCount = res.Account.RequestCount
 	}
+	if res.TokenList != nil {
+		snap.TokenListRaw = datatypes.JSON(res.TokenList.Raw)
+	}
+	snap.TokenUsageRaw = datatypes.JSON(usageRaw)
 	if err := gdb.Create(snap).Error; err != nil {
 		return err
 	}
@@ -78,12 +78,15 @@ func Save(gdb *gorm.DB, date string, res *Result) error {
 			UsedQuota:   it.UsedQuota,
 			RemainQuota: it.RemainQuota,
 		}
-		listRaw, _ := json.Marshal(it)
-		ts.ListRaw = listRaw
-		if u, ok := res.Usages[it.ID]; ok {
+		if len(it.Raw) > 0 {
+			ts.ListRaw = datatypes.JSON(it.Raw)
+		}
+		if u, ok := res.Usages[it.ID]; ok && u != nil {
 			ts.TotalUsed = u.TotalUsed
 			ts.TotalGranted = u.TotalGranted
-			ts.UsageRaw = datatypes.JSON(u.Raw)
+			if len(u.Raw) > 0 {
+				ts.UsageRaw = datatypes.JSON(u.Raw)
+			}
 		}
 		if err := gdb.Create(ts).Error; err != nil {
 			return err

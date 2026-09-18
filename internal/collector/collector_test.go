@@ -3,6 +3,7 @@ package collector
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"quick-feishu/internal/api"
@@ -58,5 +59,57 @@ func TestCollectAndSave(t *testing.T) {
 	}
 	if tokens[0].TotalUsed == 0 {
 		t.Error("token TotalUsed should be populated from usage")
+	}
+}
+
+func TestSaveStoresUnknownFields(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/user/self":
+			w.Write([]byte(`{"data":{"id":1,"quota":1000,"used_quota":300,"request_count":5,"aff_code":"XYZ"},"success":true}`))
+		case "/api/token/":
+			w.Write([]byte(`{"data":{"page":1,"page_size":1,"total":1,"items":[
+				{"id":11,"key":"k1","name":"claude","used_quota":100,"remain_quota":0,"mj_image_mode":"relax"}
+			]},"success":true}`))
+		case "/api/usage/token/":
+			w.Write([]byte(`{"data":{"name":"x","total_used":100,"total_granted":1000,"extra_usage_field":"present"},"success":true}`))
+		}
+	}))
+	defer srv.Close()
+
+	c := api.NewClient(srv.URL, "sys-token", "1")
+	res := Collect(c)
+	if len(res.Errors) != 0 {
+		t.Fatalf("collect errors: %v", res.Errors)
+	}
+
+	dir := t.TempDir()
+	gdb, err := db.Init(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Save(gdb, "2026-09-18", res); err != nil {
+		t.Fatal(err)
+	}
+
+	var snap model.Snapshot
+	gdb.First(&snap)
+	if !strings.Contains(string(snap.AccountRaw), "aff_code") || !strings.Contains(string(snap.AccountRaw), "XYZ") {
+		t.Errorf("account raw missing unknown field: %s", string(snap.AccountRaw))
+	}
+	if !strings.Contains(string(snap.TokenListRaw), "mj_image_mode") {
+		t.Errorf("token list raw missing unknown token field: %s", string(snap.TokenListRaw))
+	}
+
+	var tokens []model.TokenSnapshot
+	gdb.Where("snapshot_id = ?", snap.ID).Find(&tokens)
+	if len(tokens) != 1 {
+		t.Fatalf("tokens = %d, want 1", len(tokens))
+	}
+	if !strings.Contains(string(tokens[0].ListRaw), "mj_image_mode") {
+		t.Errorf("token ListRaw missing unknown field: %s", string(tokens[0].ListRaw))
+	}
+	if !strings.Contains(string(tokens[0].UsageRaw), "extra_usage_field") {
+		t.Errorf("token UsageRaw missing unknown field: %s", string(tokens[0].UsageRaw))
 	}
 }
