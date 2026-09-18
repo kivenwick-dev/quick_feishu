@@ -38,9 +38,13 @@ func (h *Handlers) GetSnapshot(c *gin.Context) {
 func (h *Handlers) CompareSnapshots(c *gin.Context) {
 	from := c.Query("from")
 	to := c.Query("to")
-	early, _ := db.SnapshotByDate(h.DB, from)
-	late, _ := db.SnapshotByDate(h.DB, to)
-	if early == nil || late == nil {
+	if from == "" || to == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "from and to required"})
+		return
+	}
+	early, earlyErr := db.SnapshotByDate(h.DB, from)
+	late, lateErr := db.SnapshotByDate(h.DB, to)
+	if earlyErr != nil || lateErr != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "snapshot not found"})
 		return
 	}
