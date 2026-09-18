@@ -198,7 +198,7 @@ func (h *Handlers) RestartScheduler(c *gin.Context) {
 	if snapErr != nil {
 		resp["snapshot_error"] = "采集失败，请检查服务端配置或日志"
 	} else if res != nil && len(res.Issues) > 0 {
-		resp["snapshot_warnings"] = publicWarnings(res.Issues)
+		resp["snapshot_issues"] = publicIssues(res.Issues)
 	}
 	c.JSON(http.StatusOK, resp)
 }

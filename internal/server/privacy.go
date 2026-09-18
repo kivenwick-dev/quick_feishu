@@ -146,9 +146,19 @@ func publicLogs(list []model.SendLog) []logView {
 	return out
 }
 
-func publicWarnings(issues []collector.Issue) []string {
-	if len(issues) == 0 {
-		return []string{}
+type issueView struct {
+	Scope     string `json:"scope"`
+	TokenName string `json:"token_name"`
+	Kind      string `json:"kind"`
+	Status    int    `json:"status"`
+	Detail    string `json:"detail"`
+}
+
+// publicIssues 输出脱敏后的采集问题；不含令牌 key。
+func publicIssues(issues []collector.Issue) []issueView {
+	out := []issueView{}
+	for _, is := range issues {
+		out = append(out, issueView{is.Scope, is.TokenName, is.Kind, is.Status, is.Detail})
 	}
-	return []string{"部分数据采集失败，请检查服务端配置或日志"}
+	return out
 }

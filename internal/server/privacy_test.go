@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"gorm.io/datatypes"
+	"quick-feishu/internal/collector"
 	"quick-feishu/internal/config"
 	"quick-feishu/internal/db"
 	"quick-feishu/internal/model"
@@ -144,5 +145,17 @@ func TestAllQuantitativeMetricsRemainVisible(t *testing.T) {
 		if !field.Diff {
 			t.Errorf("missing diff: %s", field.Field)
 		}
+	}
+}
+
+func TestPublicIssuesKeepsTokenNameAndKind(t *testing.T) {
+	out := publicIssues([]collector.Issue{
+		{Scope: "usage", TokenName: "gpt6robodjo", Kind: collector.KindQuotaExhausted, Status: 401, Detail: "该令牌额度已用尽"},
+	})
+	if len(out) != 1 {
+		t.Fatalf("view len = %d", len(out))
+	}
+	if out[0].TokenName != "gpt6robodjo" || out[0].Kind != collector.KindQuotaExhausted || out[0].Status != 401 {
+		t.Fatalf("bad view: %+v", out[0])
 	}
 }
