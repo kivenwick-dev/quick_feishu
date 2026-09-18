@@ -39,16 +39,16 @@ type Result struct {
 }
 
 // classify 将一次采集错误归类为 Issue。
-func classify(scope, tokenName string, err error) Issue {
+func classify(scope, tokenName, secret string, err error) Issue {
 	issue := Issue{Scope: scope, TokenName: tokenName, Kind: KindOther}
 	var he *api.HTTPError
 	if !errors.As(err, &he) {
 		issue.Kind = KindNetwork
-		issue.Detail = err.Error()
+		issue.Detail = redact(err.Error(), secret, 0)
 		return issue
 	}
 	issue.Status = he.Status
-	issue.Detail = platformMessage(he.Body)
+	issue.Detail = redact(platformMessage(he.Body), secret, he.Status)
 	if issue.Detail == "" {
 		issue.Detail = fmt.Sprintf("HTTP %d", he.Status)
 	}
@@ -61,6 +61,17 @@ func classify(scope, tokenName string, err error) Issue {
 		issue.Kind = KindServerError
 	}
 	return issue
+}
+
+// redact 当明细包含令牌 key 时，替换为不含敏感信息的表述。
+func redact(detail, secret string, status int) string {
+	if secret != "" && strings.Contains(detail, secret) {
+		if status > 0 {
+			return fmt.Sprintf("HTTP %d", status)
+		}
+		return "已隐藏敏感信息"
+	}
+	return detail
 }
 
 // platformMessage 只从 {"error":{"message":"..."}} 取 message，绝不回传原始 body。
@@ -82,21 +93,21 @@ func Collect(c *api.Client) *Result {
 
 	account, _, err := c.GetAccount()
 	if err != nil {
-		res.Issues = append(res.Issues, classify("account", "", err))
+		res.Issues = append(res.Issues, classify("account", "", "", err))
 	} else {
 		res.Account = account
 	}
 
 	list, _, err := c.GetTokenList()
 	if err != nil {
-		res.Issues = append(res.Issues, classify("tokenlist", "", err))
+		res.Issues = append(res.Issues, classify("tokenlist", "", "", err))
 		res.TokenList = &api.TokenListData{Items: []api.TokenItem{}}
 	} else {
 		res.TokenList = list
 		for _, it := range list.Items {
 			usage, _, uerr := c.GetTokenUsage(it.Key)
 			if uerr != nil {
-				res.Issues = append(res.Issues, classify("usage", it.Name, uerr))
+				res.Issues = append(res.Issues, classify("usage", it.Name, it.Key, uerr))
 				continue
 			}
 			res.Usages[it.ID] = usage

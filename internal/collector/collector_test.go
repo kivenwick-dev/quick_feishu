@@ -180,7 +180,7 @@ func TestClassifyIssue(t *testing.T) {
 		{"other", &api.HTTPError{Status: 400, Body: `{"error":{"message":"bad request"}}`}, KindOther},
 	}
 	for _, tc := range cases {
-		got := classify("usage", "tok", tc.err)
+		got := classify("usage", "tok", "", tc.err)
 		if got.Kind != tc.want {
 			t.Errorf("%s: kind = %s, want %s", tc.name, got.Kind, tc.want)
 		}
@@ -188,7 +188,7 @@ func TestClassifyIssue(t *testing.T) {
 }
 
 func TestClassifyDoesNotLeakRawBody(t *testing.T) {
-	got := classify("usage", "tok", &api.HTTPError{
+	got := classify("usage", "tok", "", &api.HTTPError{
 		Status: 401,
 		Body:   `{"error":{"message":"该令牌额度已用尽"},"secret":"LEAK"}`,
 	})
@@ -197,5 +197,16 @@ func TestClassifyDoesNotLeakRawBody(t *testing.T) {
 	}
 	if strings.Contains(got.Detail, "LEAK") {
 		t.Fatalf("raw body leaked: %s", got.Detail)
+	}
+}
+
+func TestClassifyRedactsTokenKey(t *testing.T) {
+	key := "sk-secret-key"
+	got := classify("usage", "tok", key, &api.HTTPError{Status: 401, Body: `{"error":{"message":"key sk-secret-key exhausted"}}`})
+	if strings.Contains(got.Detail, key) {
+		t.Fatalf("token key leaked in detail: %s", got.Detail)
+	}
+	if got.Detail != "HTTP 401" {
+		t.Errorf("detail = %q, want HTTP 401", got.Detail)
 	}
 }
