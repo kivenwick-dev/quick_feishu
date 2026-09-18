@@ -1439,14 +1439,24 @@ func TestSnapshotQueries(t *testing.T) {
 	if before2.AccountUsed != 100 {
 		t.Errorf("before 09-17 should be 100, got %d", before2.AccountUsed)
 	}
-	missing, err := SnapshotBefore(gdb, "2026-09-16")
-	if err != nil {
-		t.Errorf("should fallback to latest available: %v", err)
+	// 09-16 之前无快照：返回错误（"向前替代"由调用方处理，见 Task 16）
+	if _, err := SnapshotBefore(gdb, "2026-09-16"); err == nil {
+		t.Errorf("expected error when no snapshot at or before 09-16")
 	}
-	_ = missing
 	inRange, _ := SnapshotsInRange(gdb, "2026-09-17", "2026-09-18")
 	if len(inRange) != 2 {
 		t.Errorf("range = %d, want 2", len(inRange))
+	}
+	// 分页查询
+	list, total, err := ListSnapshots(gdb, 1, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 2 || len(list) != 2 {
+		t.Errorf("list total=%d len=%d, want 2/2", total, len(list))
+	}
+	if list[0].SnapshotDate != "2026-09-18" {
+		t.Errorf("list should be desc order, got first=%s", list[0].SnapshotDate)
 	}
 }
 ```
