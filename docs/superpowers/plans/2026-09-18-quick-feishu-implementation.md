@@ -29,13 +29,13 @@
 
 | Phase | 任务 | 状态 | 完成日期 |
 | --- | --- | --- | --- |
-| 0 | Task 1 项目脚手架 | ⬜ | |
-| 0 | Task 2 配置模块 | ⬜ | |
-| 0 | Task 3 数据模型+建表 | ⬜ | |
-| 0 | Task 4 内置字段字典 | ⬜ | |
-| 1 | Task 5 HTTP客户端封装 | ⬜ | |
-| 1 | Task 6 三接口客户端 | ⬜ | |
-| 1 | Task 7 采集服务 | ⬜ | |
+| 0 | Task 1 项目脚手架 | ✅ | 2026-09-18 |
+| 0 | Task 2 配置模块 | ✅ | 2026-09-18 |
+| 0 | Task 3 数据模型+建表 | ✅ | 2026-09-18 |
+| 0 | Task 4 内置字段字典 | ✅ | 2026-09-18 |
+| 1 | Task 5 HTTP客户端封装 | ✅ | 2026-09-18 |
+| 1 | Task 6 三接口客户端 | ✅ | 2026-09-18 |
+| 1 | Task 7 采集服务 | ✅ | 2026-09-18 |
 | 2 | Task 8 快照存储 | ⬜ | |
 | 3 | Task 9 日报模板解析 | ⬜ | |
 | 3 | Task 10 差值计算 | ⬜ | |
@@ -50,6 +50,33 @@
 | 8 | Task 19 构建打包 | ⬜ | |
 | 9 | Task 20 测试完善 | ⬜ | |
 | 9 | Task 21 端到端验证 | ⬜ | |
+
+### 实施记录 / 变更日志（Agent 维护）
+
+| 日期 | 分支/提交 | 说明 |
+| --- | --- | --- |
+| 2026-09-18 | feature/quick-feishu | 分支创建，基于 main 的文档提交 |
+| 2026-09-18 | e084c9b / b31207a | Task 1：脚手架 + .gitignore + 目录 .gitkeep |
+| 2026-09-18 | dfc56a5 / e386e6d | Task 2：配置模块 + 读取错误处理修正 |
+| 2026-09-18 | b7f3388 / b0116c1 | Task 3：GORM 模型与迁移 + go.mod tidy |
+| 2026-09-18 | 583cce2 | Task 4：内置字段字典（GORM Create 需指针） |
+| 2026-09-18 | 2f9a9bd | Task 5：HTTP 客户端（含 sleepFn 测试钩子） |
+| 2026-09-18 | 1d18469 / 14e5709 | Task 6：三接口客户端 + 分页/鉴权测试补强 |
+| 2026-09-18 | 5e8ab2b | Task 7：采集服务 |
+| 2026-09-18 | **5fe9cc4** | **架构修正（见下方"重要变更：方案A 存全字段"）** |
+| 2026-09-18 | 29e002d | 分页死循环防护 + Save nil 防护 |
+
+### 重要变更：方案A「存全字段」（2026-09-18 用户确认）
+
+**背景**：原计划把接口响应解析进结构体后再 `json.Marshal` 结构体落库，会丢失结构体未定义的字段，不满足"存全"要求。
+
+**变更**：API 客户端改为捕获**原始 `data` 子对象**的完整 JSON（全字段），采集层直接存储原始字节：
+- `AccountData.Raw` / `TokenUsageData.Raw` = 原始 `data` 对象
+- `TokenItem.Raw` = 每令牌原始 JSON；`TokenListData.Raw` = 汇总 `{total, items:[raw...]}`
+- `collector.Save` 存储上述原始字节，不再重新 marshal 结构体
+- 字段路径保持顶层（如 `used_quota`），Task 10 的差值提取逻辑**无需改动**
+
+**对后续任务的影响**：Task 8/10/16 读取快照时，`AccountRaw`/`TokenListRaw`/`UsageRaw` 均为全字段原始 JSON（`data` 对象），字段路径为顶层。
 
 ---
 
@@ -823,6 +850,9 @@ git commit -m "feat: HTTP client wrapper with retry"
 
 ## Task 6: 三接口客户端
 
+> **✅ 已完成（2026-09-18）** — commit 1d18469，测试补强 14e5709。
+> **⚠️ 代码已按「方案A」更新**：下方示例代码为初稿，实际实现改为捕获**原始 `data` 子对象的全字段 JSON**（见文首「重要变更：方案A」）。实际实现以 `internal/api/*.go`（commit 5fe9cc4）为准：`AccountData.Raw`/`TokenUsageData.Raw` 存原始 `data` 对象，`TokenItem.Raw` 存每项原始 JSON，`TokenListData.Raw` 存 `{total, items:[raw...]}`。
+
 **Files:**
 - Create: `internal/api/account.go`
 - Create: `internal/api/tokenlist.go`
@@ -1114,6 +1144,9 @@ git commit -m "feat: three QuickRouter API clients"
 ---
 
 ## Task 7: 采集服务
+
+> **✅ 已完成（2026-09-18）** — commit 5e8ab2b，方案A 修正 5fe9cc4，健壮性加固 29e002d。
+> **⚠️ 代码已按「方案A」更新**：`Save` 现直接存储客户端捕获的**全字段原始 JSON**（`res.Account.Raw`/`res.TokenList.Raw`/`it.Raw`/`u.Raw`），不再 `json.Marshal` 结构体。`Collect` 逻辑不变。实际实现以 `internal/collector/collector.go` 为准。
 
 **Files:**
 - Create: `internal/collector/collector.go`
