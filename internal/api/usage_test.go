@@ -23,3 +23,20 @@ func TestGetTokenUsage(t *testing.T) {
 		t.Errorf("total_used = %d", d.TotalUsed)
 	}
 }
+
+func TestGetTokenUsageNoUserHeader(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("new-api-user") != "" {
+			t.Errorf("usage must NOT send new-api-user, got %s", r.Header.Get("new-api-user"))
+		}
+		if r.URL.Path != "/api/usage/token/" {
+			t.Errorf("path = %s", r.URL.Path)
+		}
+		w.Write([]byte(`{"data":{"name":"x"},"success":true}`))
+	}))
+	defer srv.Close()
+	c := NewClient(srv.URL, "sys-token", "827947")
+	if _, _, err := c.GetTokenUsage("token-key"); err != nil {
+		t.Fatal(err)
+	}
+}
