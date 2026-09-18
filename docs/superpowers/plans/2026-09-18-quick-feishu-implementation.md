@@ -2455,8 +2455,8 @@ func (s *Server) RegisterRoutes(h *Handlers) {
 		api.POST("/snapshot/run", h.RunSnapshot)
 		api.POST("/report/send", h.SendReport)
 		api.GET("/snapshots", h.ListSnapshots)
+		api.GET("/compare", h.CompareSnapshots)
 		api.GET("/snapshots/:id", h.GetSnapshot)
-		api.GET("/snapshots/compare", h.CompareSnapshots)
 		api.GET("/template", h.GetTemplate)
 		api.PUT("/template", h.SaveTemplate)
 		api.GET("/dict/:source", h.GetDict)
@@ -2475,17 +2475,15 @@ func (s *Server) RegisterRoutes(h *Handlers) {
 - [ ] **Step 3: 添加依赖并编译**
 
 Run: `go get github.com/gin-gonic/gin`
-Run: `go build ./internal/server/`
-Expected: 报错缺少 `web` 嵌入目录 → 需先创建空目录或调整 embed
 
-说明：若 `web/` 尚为空，embed 会失败。先创建占位文件 `web/.gitkeep`，后续 Task 17 放前端产物。
+**嵌入路径修正**：Go `embed` 只能引用**本包目录及其子目录**。`routes.go` 位于 `internal/server/`，故前端产物必须输出到 `internal/server/web/`（Task 17 的 Vite `outDir` 对应调整）。先创建占位：
 
-Run: `mkdir -p web && touch web/.gitkeep && go build ./internal/server/`
+Run: `mkdir -p internal/server/web && touch internal/server/web/.gitkeep && go build ./internal/server/`
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add internal/server/ web/.gitkeep
+git add internal/server/ 
 git commit -m "feat: gin server skeleton with API routes"
 ```
 
@@ -2570,13 +2568,15 @@ func (h *Handlers) SendReport(c *gin.Context) {
 package server
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"quick-feishu/internal/db"
-	"quick-feishu/internal/report"
 	"quick-feishu/internal/feishu"
+	"quick-feishu/internal/model"
+	"quick-feishu/internal/report"
 )
 
 func (h *Handlers) ListSnapshots(c *gin.Context) {
@@ -2718,6 +2718,61 @@ func (h *Handlers) ListSendLogs(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"items": list, "total": total})
+}
+
+// SaveDict 新增或更新某接口的一个字段字典项（按 field_path upsert）
+func (h *Handlers) SaveDict(c *gin.Context) {
+	source := c.Param("source")
+	var in struct {
+		FieldPath   string `json:"field_path"`
+		Label       string `json:"label"`
+		FieldType   string `json:"field_type"`
+		Description string `json:"description"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if in.FieldPath == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "field_path required"})
+		return
+	}
+	switch source {
+	case "account":
+		var f model.DictAccountField
+		if err := h.DB.Where("field_path = ?", in.FieldPath).First(&f).Error; err != nil {
+			f = model.DictAccountField{FieldPath: in.FieldPath}
+		}
+		f.Label, f.FieldType, f.Description = in.Label, in.FieldType, in.Description
+		if err := h.DB.Save(&f).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+	case "token":
+		var f model.DictTokenField
+		if err := h.DB.Where("field_path = ?", in.FieldPath).First(&f).Error; err != nil {
+			f = model.DictTokenField{FieldPath: in.FieldPath}
+		}
+		f.Label, f.FieldType, f.Description = in.Label, in.FieldType, in.Description
+		if err := h.DB.Save(&f).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+	case "usage":
+		var f model.DictUsageField
+		if err := h.DB.Where("field_path = ?", in.FieldPath).First(&f).Error; err != nil {
+			f = model.DictUsageField{FieldPath: in.FieldPath}
+		}
+		f.Label, f.FieldType, f.Description = in.Label, in.FieldType, in.Description
+		if err := h.DB.Save(&f).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": "bad source"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
 func mustToMap(v interface{}) map[string]interface{} {
@@ -2912,7 +2967,7 @@ npm install
 npm install element-plus @element-plus/icons-vue axios vue-router@4
 ```
 
-- [ ] **Step 2: 配置 Vite 构建输出到 web/**
+- [ ] **Step 2: 配置 Vite 构建输出到 internal/server/web/**
 
 `frontend/vite.config.ts`:
 
@@ -2924,7 +2979,7 @@ export default defineConfig({
   plugins: [vue()],
   base: './',
   build: {
-    outDir: '../web',
+    outDir: '../internal/server/web',
     emptyOutDir: true,
   },
 })
@@ -2981,12 +3036,12 @@ createApp(App).use(router).use(ElementPlus).mount('#app')
 - [ ] **Step 5: 构建并验证产物**
 
 Run: `cd frontend && npm run build`
-Expected: `../web/` 下生成 index.html + assets/
+Expected: `internal/server/web/` 下生成 index.html + assets/
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add frontend/ web/
+git add frontend/ internal/server/web/
 git commit -m "feat: vue frontend scaffold with element-plus"
 ```
 
@@ -3016,7 +3071,7 @@ export default {
   sendReport: () => api.post('/report/send'),
   snapshots: (page = 1, size = 20) => api.get('/snapshots', { params: { page, size } }),
   snapshot: (id: number) => api.get(`/snapshots/${id}`),
-  compare: (from: string, to: string) => api.get('/snapshots/compare', { params: { from, to } }),
+  compare: (from: string, to: string) => api.get('/compare', { params: { from, to } }),
   getTemplate: () => api.get('/template'),
   saveTemplate: (data: any) => api.put('/template', data),
   getDict: (source: string) => api.get(`/dict/${source}`),
@@ -3198,7 +3253,7 @@ async function testFeishu() {
 - [ ] **Step 6: 构建前端**
 
 Run: `cd frontend && npm run build`
-Expected: 构建成功，产物在 web/
+Expected: 构建成功，产物在 internal/server/web/
 
 - [ ] **Step 7: Commit**
 

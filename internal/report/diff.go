@@ -87,6 +87,11 @@ func computeDiff(early, late *model.Snapshot, f Field, label string) (DiffResult
 	return res, nil
 }
 
+// ComputeDiffAccount 供 handler/service 使用：对账号快照字段计算差值
+func ComputeDiffAccount(early, late *model.Snapshot, f Field, label string) (DiffResult, error) {
+	return computeDiff(early, late, f, label)
+}
+
 func toFloat(v interface{}) (float64, bool) {
 	switch t := v.(type) {
 	case float64:
