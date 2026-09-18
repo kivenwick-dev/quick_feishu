@@ -100,8 +100,8 @@ func runSnapshot() {
 		os.Exit(1)
 	}
 	fmt.Println("snapshot saved:", app.Today())
-	for _, e := range res.Errors {
-		fmt.Println("  warning:", e)
+	for _, e := range res.Issues {
+		fmt.Printf("  issue: kind=%s scope=%s token=%s status=%d detail=%s\n", e.Kind, e.Scope, e.TokenName, e.Status, e.Detail)
 	}
 }
 

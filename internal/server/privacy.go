@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"quick-feishu/internal/collector"
 	"quick-feishu/internal/model"
 	"quick-feishu/internal/report"
 )
@@ -145,8 +146,8 @@ func publicLogs(list []model.SendLog) []logView {
 	return out
 }
 
-func publicWarnings(errors []string) []string {
-	if len(errors) == 0 {
+func publicWarnings(issues []collector.Issue) []string {
+	if len(issues) == 0 {
 		return []string{}
 	}
 	return []string{"部分数据采集失败，请检查服务端配置或日志"}
