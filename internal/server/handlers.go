@@ -47,7 +47,10 @@ func (h *Handlers) SendReport(c *gin.Context) {
 		return
 	}
 	prev, _ := db.SnapshotBefore(h.DB, addDays(latest.SnapshotDate, -1))
-	tmpl := report.DefaultTemplate()
+	tmpl, _ := report.TemplateFromMap(h.Config.ReportTemplate)
+	if tmpl == nil {
+		tmpl = report.DefaultTemplate()
+	}
 	log, err := report.ExecuteReport(h.DB, latest, prev, tmpl, h.Config.Feishu.WebhookURL, h.Config.Feishu.RetryTimes)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error(), "log_id": log.ID})

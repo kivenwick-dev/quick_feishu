@@ -1,6 +1,7 @@
 package report
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"gorm.io/gorm"
@@ -8,6 +9,22 @@ import (
 	"quick-feishu/internal/feishu"
 	"quick-feishu/internal/model"
 )
+
+// TemplateFromMap 将配置中的 report_template map 转换为 Template；为空时返回默认模板。
+func TemplateFromMap(m map[string]interface{}) (*Template, error) {
+	if len(m) == 0 {
+		return DefaultTemplate(), nil
+	}
+	b, err := json.Marshal(m)
+	if err != nil {
+		return DefaultTemplate(), err
+	}
+	t, err := ParseTemplate(b)
+	if err != nil {
+		return DefaultTemplate(), err
+	}
+	return t, nil
+}
 
 // ExecuteReport 取最新两日快照，按模板计算差值生成卡片，推送到飞书并记录日志。
 // 返回发送日志（无论成败），供调用方展示。

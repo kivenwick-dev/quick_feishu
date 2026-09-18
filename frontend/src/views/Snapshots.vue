@@ -54,8 +54,10 @@ async function loadDetail(row: any) {
   const res = await api.snapshot(row.id)
   detail.value = res.data
 }
-function pretty(raw: string) {
-  try { return JSON.stringify(JSON.parse(raw), null, 2) } catch { return raw }
+function pretty(raw: any) {
+  if (raw === null || raw === undefined) return ''
+  if (typeof raw === 'object') return JSON.stringify(raw, null, 2)
+  try { return JSON.stringify(JSON.parse(raw), null, 2) } catch { return String(raw) }
 }
 async function doCompare() {
   if (!range.value || range.value.length !== 2) return

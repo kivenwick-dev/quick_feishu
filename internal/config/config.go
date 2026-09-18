@@ -9,32 +9,32 @@ import (
 )
 
 type Config struct {
-	App            AppConfig              `yaml:"app"`
-	Account        AccountConfig          `yaml:"account"`
-	Feishu         FeishuConfig           `yaml:"feishu"`
-	Schedule       ScheduleConfig         `yaml:"schedule"`
-	ReportTemplate map[string]interface{} `yaml:"report_template"`
+	App            AppConfig              `yaml:"app" json:"app"`
+	Account        AccountConfig          `yaml:"account" json:"account"`
+	Feishu         FeishuConfig           `yaml:"feishu" json:"feishu"`
+	Schedule       ScheduleConfig         `yaml:"schedule" json:"schedule"`
+	ReportTemplate map[string]interface{} `yaml:"report_template" json:"report_template"`
 }
 
 type AppConfig struct {
-	Port     int    `yaml:"port"`
-	Timezone string `yaml:"timezone"`
+	Port     int    `yaml:"port" json:"port"`
+	Timezone string `yaml:"timezone" json:"timezone"`
 }
 
 type AccountConfig struct {
-	UserID      string `yaml:"user_id"`
-	SystemToken string `yaml:"system_token"`
-	APIBase     string `yaml:"api_base"`
+	UserID      string `yaml:"user_id" json:"user_id"`
+	SystemToken string `yaml:"system_token" json:"system_token"`
+	APIBase     string `yaml:"api_base" json:"api_base"`
 }
 
 type FeishuConfig struct {
-	WebhookURL string `yaml:"webhook_url"`
-	RetryTimes int    `yaml:"retry_times"`
+	WebhookURL string `yaml:"webhook_url" json:"webhook_url"`
+	RetryTimes int    `yaml:"retry_times" json:"retry_times"`
 }
 
 type ScheduleConfig struct {
-	SnapshotTime string `yaml:"snapshot_time"`
-	ReportTime   string `yaml:"report_time"`
+	SnapshotTime string `yaml:"snapshot_time" json:"snapshot_time"`
+	ReportTime   string `yaml:"report_time" json:"report_time"`
 }
 
 func Default() *Config {
