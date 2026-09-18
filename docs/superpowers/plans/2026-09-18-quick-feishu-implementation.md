@@ -2175,11 +2175,11 @@ type Scheduler struct {
 
 func New(cfg *config.Config, loc *time.Location) *Scheduler {
 	return &Scheduler{
-		Cron: cron.New(cron.WithLocation(loc)),
+		Cron: cron.New(cron.WithLocation(loc), cron.WithSeconds()),
 	}
 }
 
-// RegisterSnapshot 注册每日快照任务（cron 表达式如 "0 0 * * *"）
+// RegisterSnapshot 注册每日快照任务（cron 表达式如 "0 0 0 * * *"）
 func (s *Scheduler) RegisterSnapshot(cronExpr string) error {
 	_, err := s.Cron.AddFunc(cronExpr, func() {
 		if s.OnSnapshot != nil {
