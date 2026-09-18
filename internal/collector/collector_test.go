@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -79,8 +80,8 @@ func TestSaveStoresUnknownFields(t *testing.T) {
 
 	c := api.NewClient(srv.URL, "sys-token", "1")
 	res := Collect(c)
-	if len(res.Errors) != 0 {
-		t.Fatalf("collect errors: %v", res.Errors)
+	if len(res.Issues) != 0 {
+		t.Fatalf("collect issues: %v", res.Issues)
 	}
 
 	dir := t.TempDir()
@@ -162,5 +163,39 @@ func TestSaveRetainsSameDateCaptures(t *testing.T) {
 	gdb.Model(&model.Snapshot{}).Count(&snapCount)
 	if snapCount != 3 {
 		t.Errorf("snapshots = %d, want 3 after new date", snapCount)
+	}
+}
+
+func TestClassifyIssue(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want string
+	}{
+		{"quota exhausted", &api.HTTPError{Status: 401, Body: `{"error":{"message":"该令牌额度已用尽 (request id: x)"}}`}, KindQuotaExhausted},
+		{"unauthorized", &api.HTTPError{Status: 401, Body: `{"error":{"message":"invalid token"}}`}, KindUnauthorized},
+		{"forbidden", &api.HTTPError{Status: 403, Body: `{"error":{"message":"forbidden"}}`}, KindUnauthorized},
+		{"server error", &api.HTTPError{Status: 502, Body: `bad gateway`}, KindServerError},
+		{"network", errors.New("dial tcp: timeout"), KindNetwork},
+		{"other", &api.HTTPError{Status: 400, Body: `{"error":{"message":"bad request"}}`}, KindOther},
+	}
+	for _, tc := range cases {
+		got := classify("usage", "tok", tc.err)
+		if got.Kind != tc.want {
+			t.Errorf("%s: kind = %s, want %s", tc.name, got.Kind, tc.want)
+		}
+	}
+}
+
+func TestClassifyDoesNotLeakRawBody(t *testing.T) {
+	got := classify("usage", "tok", &api.HTTPError{
+		Status: 401,
+		Body:   `{"error":{"message":"该令牌额度已用尽"},"secret":"LEAK"}`,
+	})
+	if got.Detail != "该令牌额度已用尽" {
+		t.Errorf("detail = %q", got.Detail)
+	}
+	if strings.Contains(got.Detail, "LEAK") {
+		t.Fatalf("raw body leaked: %s", got.Detail)
 	}
 }
