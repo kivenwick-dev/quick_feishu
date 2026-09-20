@@ -7,7 +7,6 @@ import (
 
 	"quick-feishu/internal/app"
 	"quick-feishu/internal/config"
-	"quick-feishu/internal/db"
 	"quick-feishu/internal/server"
 )
 
@@ -45,14 +44,11 @@ func newApp() (*app.App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("config error: %w", err)
 	}
-	gdb, err := db.Init(filepath.Join(dir, "data"))
+	a, err := app.New(cfg, filepath.Join(dir, "data"), cfgPath)
 	if err != nil {
 		return nil, fmt.Errorf("db error: %w", err)
 	}
-	if err := db.SeedDicts(gdb); err != nil {
-		return nil, fmt.Errorf("seed error: %w", err)
-	}
-	return app.New(cfg, gdb, cfgPath), nil
+	return a, nil
 }
 
 func serve() {
@@ -77,7 +73,7 @@ func serve() {
 		fmt.Println("port error:", err)
 		os.Exit(1)
 	}
-	handlers := &server.Handlers{App: a, DB: a.DB, Config: a.Config, ConfigPath: a.ConfigPath}
+	handlers := &server.Handlers{App: a, Config: a.Config, ConfigPath: a.ConfigPath}
 	srv.RegisterRoutes(handlers)
 	url := fmt.Sprintf("http://localhost:%d/", port)
 	fmt.Println("QuickFeishu running at", url)
