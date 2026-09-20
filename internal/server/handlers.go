@@ -17,12 +17,13 @@ type Handlers struct {
 }
 
 func (h *Handlers) Dashboard(c *gin.Context) {
-	snap, err := db.LatestSnapshot(h.App.DB())
+	gdb := h.App.DB()
+	snap, err := db.LatestSnapshot(gdb)
 	if err != nil {
 		snap = nil
 	}
 	var logs []model.SendLog
-	h.App.DB().Order("id DESC").Limit(10).Find(&logs)
+	gdb.Order("id DESC").Limit(10).Find(&logs)
 	c.JSON(http.StatusOK, gin.H{"latest_snapshot": publicSnapshot(snap), "recent_logs": publicLogs(logs)})
 }
 

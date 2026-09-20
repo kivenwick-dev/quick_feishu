@@ -49,13 +49,14 @@ func (h *Handlers) GetTokens(c *gin.Context) {
 
 // GetLatest 返回最近快照按当前模板组装的分区结果（含变动），供仪表盘预览
 func (h *Handlers) GetLatest(c *gin.Context) {
-	latest, err := db.LatestSnapshot(h.App.DB())
+	gdb := h.App.DB()
+	latest, err := db.LatestSnapshot(gdb)
 	if err != nil || latest == nil {
 		c.JSON(http.StatusOK, gin.H{"date": nil, "sections": []interface{}{}})
 		return
 	}
 	var prev *model.Snapshot
-	if p, e := db.PreviousSnapshot(h.App.DB(), latest); e == nil {
+	if p, e := db.PreviousSnapshot(gdb, latest); e == nil {
 		prev = p
 	}
 	tmpl, _ := report.TemplateFromMap(h.Config.ReportTemplate)
@@ -66,7 +67,7 @@ func (h *Handlers) GetLatest(c *gin.Context) {
 	if prev != nil {
 		prev.AccountRaw = publicAccountRaw(prev.AccountRaw)
 	}
-	sections := report.BuildSections(h.App.DB(), latest, prev, publicTemplate(tmpl))
+	sections := report.BuildSections(gdb, latest, prev, publicTemplate(tmpl))
 	for i := range sections {
 		for j := range sections[i].Tokens {
 			for k := range sections[i].Tokens[j].Metrics {

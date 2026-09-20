@@ -42,8 +42,9 @@ func (h *Handlers) CompareSnapshots(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "from and to required"})
 		return
 	}
-	early, earlyErr := db.SnapshotByDate(h.App.DB(), from)
-	late, lateErr := db.SnapshotByDate(h.App.DB(), to)
+	gdb := h.App.DB()
+	early, earlyErr := db.SnapshotByDate(gdb, from)
+	late, lateErr := db.SnapshotByDate(gdb, to)
 	if earlyErr != nil || lateErr != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "snapshot not found"})
 		return
@@ -118,34 +119,35 @@ func (h *Handlers) SaveDict(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "field_path required"})
 		return
 	}
+	gdb := h.App.DB()
 	switch source {
 	case "account":
 		var f model.DictAccountField
-		if err := h.App.DB().Where("field_path = ?", in.FieldPath).First(&f).Error; err != nil {
+		if err := gdb.Where("field_path = ?", in.FieldPath).First(&f).Error; err != nil {
 			f = model.DictAccountField{FieldPath: in.FieldPath}
 		}
 		f.Label, f.FieldType, f.Description = in.Label, in.FieldType, in.Description
-		if err := h.App.DB().Save(&f).Error; err != nil {
+		if err := gdb.Save(&f).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "操作失败，请检查输入或服务端配置"})
 			return
 		}
 	case "token":
 		var f model.DictTokenField
-		if err := h.App.DB().Where("field_path = ?", in.FieldPath).First(&f).Error; err != nil {
+		if err := gdb.Where("field_path = ?", in.FieldPath).First(&f).Error; err != nil {
 			f = model.DictTokenField{FieldPath: in.FieldPath}
 		}
 		f.Label, f.FieldType, f.Description = in.Label, in.FieldType, in.Description
-		if err := h.App.DB().Save(&f).Error; err != nil {
+		if err := gdb.Save(&f).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "操作失败，请检查输入或服务端配置"})
 			return
 		}
 	case "usage":
 		var f model.DictUsageField
-		if err := h.App.DB().Where("field_path = ?", in.FieldPath).First(&f).Error; err != nil {
+		if err := gdb.Where("field_path = ?", in.FieldPath).First(&f).Error; err != nil {
 			f = model.DictUsageField{FieldPath: in.FieldPath}
 		}
 		f.Label, f.FieldType, f.Description = in.Label, in.FieldType, in.Description
-		if err := h.App.DB().Save(&f).Error; err != nil {
+		if err := gdb.Save(&f).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "操作失败，请检查输入或服务端配置"})
 			return
 		}

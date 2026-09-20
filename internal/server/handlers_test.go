@@ -117,3 +117,57 @@ func TestUnknownAPIReturns404(t *testing.T) {
 		t.Errorf("unknown api should be 404, got %d", w.Code)
 	}
 }
+
+func TestHandlersFollowAccountDatabaseSwitch(t *testing.T) {
+	for _, key := range []string{"QR_USER_ID", "QR_SYSTEM_TOKEN", "QR_FEISHU_WEBHOOK"} {
+		t.Setenv(key, "")
+	}
+	gin.SetMode(gin.TestMode)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	cfg := config.Default()
+	cfg.Account.UserID = "acct-a"
+	cfg.Account.APIBase = srv.URL
+	a, err := app.New(cfg, dir, filepath.Join(t.TempDir(), "config.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := &Handlers{App: a, Config: a.Config}
+	if err := a.DB().Create(&model.Snapshot{SnapshotDate: "2026-09-18", AccountUsed: 777}).Error; err != nil {
+		t.Fatal(err)
+	}
+	s := New(0)
+	s.RegisterRoutes(h)
+
+	get := func() string {
+		w := httptest.NewRecorder()
+		s.Engine.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/snapshots", nil))
+		if w.Code != http.StatusOK {
+			t.Fatalf("code = %d body = %s", w.Code, w.Body.String())
+		}
+		return w.Body.String()
+	}
+
+	if body := get(); !strings.Contains(body, `"account_used":777`) {
+		t.Fatalf("before switch account A data missing: %s", body)
+	}
+
+	next := config.Default()
+	next.Account.UserID = "acct-b"
+	next.Account.APIBase = srv.URL
+	if err := a.SaveConfig(next); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Restart(); err != nil {
+		t.Fatal(err)
+	}
+
+	if body := get(); strings.Contains(body, `"account_used":777`) {
+		t.Fatalf("after switch account A data still visible: %s", body)
+	}
+}
