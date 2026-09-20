@@ -58,7 +58,10 @@
       </div>
       <div class="currency-formula">
         <span>计算公式</span>
-        <code>quota ÷ quota_per_unit = USD</code>
+        <div class="formula-list">
+          <code>当前额度 ÷ 单位额度 = 当前余额（美元）</code>
+          <code>累计已用额度 ÷ 单位额度 = 历史消耗（美元）</code>
+        </div>
       </div>
       <el-alert v-if="billingError" type="warning" :closable="false" show-icon :title="billingError" />
     </div>
@@ -324,11 +327,17 @@ async function testFeishu() {
 
 .currency-formula {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
   margin-top: 10px;
   color: var(--el-text-color-secondary, #909399);
   font-size: 12px;
+}
+
+.formula-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .currency-formula code {

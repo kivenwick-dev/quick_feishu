@@ -2,6 +2,8 @@
 
 QuickFeishu 用于定时采集 QuickRouter 账号与令牌用量，保存历史快照，并通过飞书机器人发送日报。程序为单个 Go 服务，内置 Web 管理页面，数据保存在本地 SQLite。
 
+生产环境建议使用 Docker Compose 部署，完整步骤参见 [容器化部署文档](docs/docker-deployment.md)。
+
 ## 1. 准备信息
 
 使用前准备：

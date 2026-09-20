@@ -1,0 +1,25 @@
+services:
+  quick-feishu:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: quick-feishu:latest
+    container_name: quick-feishu
+    restart: unless-stopped
+    ports:
+      - "${QF_BIND_ADDRESS:-127.0.0.1}:${QF_PORT:-8080}:8080"
+    environment:
+      TZ: Asia/Shanghai
+      # 账号信息默认在前端「设置」中配置；这里仅保留可选的环境变量覆盖能力。
+      QR_USER_ID: ${QR_USER_ID:-}
+      QR_SYSTEM_TOKEN: ${QR_SYSTEM_TOKEN:-}
+      QR_FEISHU_WEBHOOK: ${QR_FEISHU_WEBHOOK:-}
+    volumes:
+      - quick_feishu_config:/app/config
+      - quick_feishu_data:/app/data
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  quick_feishu_config:
+  quick_feishu_data:

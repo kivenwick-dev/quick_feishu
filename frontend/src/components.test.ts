@@ -48,7 +48,8 @@ describe('Dashboard', () => {
     expect(wrapper.find('.currency-panel').text()).toContain('$48,598.46')
     expect(wrapper.find('.currency-panel').text()).toContain('500,000 quota')
     expect(wrapper.find('.currency-panel').text()).toContain('= $1.00 USD')
-    expect(wrapper.find('.currency-panel').text()).toContain('quota ÷ quota_per_unit = USD')
+    expect(wrapper.find('.currency-panel').text()).toContain('当前额度 ÷ 单位额度 = 当前余额（美元）')
+    expect(wrapper.find('.currency-panel').text()).toContain('累计已用额度 ÷ 单位额度 = 历史消耗（美元）')
     wrapper.unmount()
   })
 

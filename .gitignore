@@ -9,3 +9,6 @@ frontend/dist/
 !data/.gitkeep
 server.log
 *.log
+.env
+runtime/
+backups/
