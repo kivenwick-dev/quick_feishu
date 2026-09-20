@@ -44,7 +44,7 @@ func Open(path string) (*gorm.DB, error) {
 
 // Init 保留旧签名，打开 dataDir 下的单库（兼容既有测试）。
 func Init(dataDir string) (*gorm.DB, error) {
-	return Open(filepath.Join(dataDir, "quick-feishu.db"))
+	return Open(Path(dataDir, ""))
 }
 
 // MigrateLegacy 首次切到某账号时，把旧单库移动到该账号目录。
@@ -53,13 +53,18 @@ func MigrateLegacy(dataDir, userID string) error {
 	if userID == "" {
 		return nil
 	}
-	legacy := filepath.Join(dataDir, "quick-feishu.db")
+	legacy := Path(dataDir, "")
 	target := Path(dataDir, userID)
 	if _, err := os.Stat(legacy); err != nil {
-		return nil // 旧库不存在，无需迁移
+		if os.IsNotExist(err) {
+			return nil // 旧库不存在，无需迁移
+		}
+		return err
 	}
 	if _, err := os.Stat(target); err == nil {
 		return nil // 目标库已存在，不覆盖
+	} else if !os.IsNotExist(err) {
+		return err
 	}
 	if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
 		return err

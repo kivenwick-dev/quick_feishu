@@ -112,3 +112,13 @@ func TestMigrateLegacyEmptyUserIDIsNoop(t *testing.T) {
 		t.Fatalf("legacy moved unexpectedly: %v", err)
 	}
 }
+
+func TestMigrateLegacyMissingLegacyIsNoop(t *testing.T) {
+	dir := t.TempDir()
+	if err := MigrateLegacy(dir, "42"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(Path(dir, "42")); !os.IsNotExist(err) {
+		t.Fatalf("no target should be created when legacy is missing, stat err = %v", err)
+	}
+}
