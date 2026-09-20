@@ -36,3 +36,79 @@ func TestInitCreatesDataDir(t *testing.T) {
 		t.Fatalf("data dir not created: %v", err)
 	}
 }
+
+func TestPath(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "data")
+	wantAccount := filepath.Join(dir, "accounts", "42", "quick-feishu.db")
+	if got := Path(dir, "42"); got != wantAccount {
+		t.Errorf("Path(42) = %s, want %s", got, wantAccount)
+	}
+	wantLegacy := filepath.Join(dir, "quick-feishu.db")
+	if got := Path(dir, ""); got != wantLegacy {
+		t.Errorf("Path(empty) = %s, want %s", got, wantLegacy)
+	}
+}
+
+func TestMigrateLegacyMovesOldDb(t *testing.T) {
+	dir := t.TempDir()
+	legacy := filepath.Join(dir, "quick-feishu.db")
+	if err := os.WriteFile(legacy, []byte("legacy"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := MigrateLegacy(dir, "42"); err != nil {
+		t.Fatal(err)
+	}
+	target := Path(dir, "42")
+	got, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatalf("target missing: %v", err)
+	}
+	if string(got) != "legacy" {
+		t.Fatalf("target content = %q", got)
+	}
+	if _, err := os.Stat(legacy); !os.IsNotExist(err) {
+		t.Fatalf("legacy should be gone, stat err = %v", err)
+	}
+}
+
+func TestMigrateLegacyDoesNotOverwrite(t *testing.T) {
+	dir := t.TempDir()
+	legacy := filepath.Join(dir, "quick-feishu.db")
+	target := Path(dir, "42")
+	if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(legacy, []byte("legacy"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(target, []byte("target"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := MigrateLegacy(dir, "42"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "target" {
+		t.Fatalf("target overwritten: %q", got)
+	}
+	if _, err := os.Stat(legacy); err != nil {
+		t.Fatalf("legacy should remain when target exists: %v", err)
+	}
+}
+
+func TestMigrateLegacyEmptyUserIDIsNoop(t *testing.T) {
+	dir := t.TempDir()
+	legacy := filepath.Join(dir, "quick-feishu.db")
+	if err := os.WriteFile(legacy, []byte("legacy"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := MigrateLegacy(dir, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(legacy); err != nil {
+		t.Fatalf("legacy moved unexpectedly: %v", err)
+	}
+}
