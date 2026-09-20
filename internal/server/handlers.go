@@ -4,7 +4,6 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 	"quick-feishu/internal/app"
 	"quick-feishu/internal/config"
 	"quick-feishu/internal/db"
@@ -13,18 +12,17 @@ import (
 
 type Handlers struct {
 	App        *app.App
-	DB         *gorm.DB
 	Config     *config.Config
 	ConfigPath string
 }
 
 func (h *Handlers) Dashboard(c *gin.Context) {
-	snap, err := db.LatestSnapshot(h.DB)
+	snap, err := db.LatestSnapshot(h.App.DB())
 	if err != nil {
 		snap = nil
 	}
 	var logs []model.SendLog
-	h.DB.Order("id DESC").Limit(10).Find(&logs)
+	h.App.DB().Order("id DESC").Limit(10).Find(&logs)
 	c.JSON(http.StatusOK, gin.H{"latest_snapshot": publicSnapshot(snap), "recent_logs": publicLogs(logs)})
 }
 

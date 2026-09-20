@@ -17,7 +17,7 @@ import (
 func (h *Handlers) ListSnapshots(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	size, _ := strconv.Atoi(c.DefaultQuery("size", "20"))
-	list, total, err := db.ListSnapshots(h.DB, page, size)
+	list, total, err := db.ListSnapshots(h.App.DB(), page, size)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "操作失败，请检查输入或服务端配置"})
 		return
@@ -28,7 +28,7 @@ func (h *Handlers) ListSnapshots(c *gin.Context) {
 func (h *Handlers) GetSnapshot(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	var snap model.Snapshot
-	if err := h.DB.First(&snap, id).Error; err != nil {
+	if err := h.App.DB().First(&snap, id).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
 		return
 	}
@@ -42,8 +42,8 @@ func (h *Handlers) CompareSnapshots(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "from and to required"})
 		return
 	}
-	early, earlyErr := db.SnapshotByDate(h.DB, from)
-	late, lateErr := db.SnapshotByDate(h.DB, to)
+	early, earlyErr := db.SnapshotByDate(h.App.DB(), from)
+	late, lateErr := db.SnapshotByDate(h.App.DB(), to)
 	if earlyErr != nil || lateErr != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "snapshot not found"})
 		return
@@ -78,19 +78,19 @@ func (h *Handlers) GetDict(c *gin.Context) {
 	switch source {
 	case "account":
 		var list []model.DictAccountField
-		h.DB.Find(&list)
+		h.App.DB().Find(&list)
 		for _, v := range list {
 			items = append(items, v)
 		}
 	case "token":
 		var list []model.DictTokenField
-		h.DB.Find(&list)
+		h.App.DB().Find(&list)
 		for _, v := range list {
 			items = append(items, v)
 		}
 	case "usage":
 		var list []model.DictUsageField
-		h.DB.Find(&list)
+		h.App.DB().Find(&list)
 		for _, v := range list {
 			items = append(items, v)
 		}
@@ -121,31 +121,31 @@ func (h *Handlers) SaveDict(c *gin.Context) {
 	switch source {
 	case "account":
 		var f model.DictAccountField
-		if err := h.DB.Where("field_path = ?", in.FieldPath).First(&f).Error; err != nil {
+		if err := h.App.DB().Where("field_path = ?", in.FieldPath).First(&f).Error; err != nil {
 			f = model.DictAccountField{FieldPath: in.FieldPath}
 		}
 		f.Label, f.FieldType, f.Description = in.Label, in.FieldType, in.Description
-		if err := h.DB.Save(&f).Error; err != nil {
+		if err := h.App.DB().Save(&f).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "操作失败，请检查输入或服务端配置"})
 			return
 		}
 	case "token":
 		var f model.DictTokenField
-		if err := h.DB.Where("field_path = ?", in.FieldPath).First(&f).Error; err != nil {
+		if err := h.App.DB().Where("field_path = ?", in.FieldPath).First(&f).Error; err != nil {
 			f = model.DictTokenField{FieldPath: in.FieldPath}
 		}
 		f.Label, f.FieldType, f.Description = in.Label, in.FieldType, in.Description
-		if err := h.DB.Save(&f).Error; err != nil {
+		if err := h.App.DB().Save(&f).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "操作失败，请检查输入或服务端配置"})
 			return
 		}
 	case "usage":
 		var f model.DictUsageField
-		if err := h.DB.Where("field_path = ?", in.FieldPath).First(&f).Error; err != nil {
+		if err := h.App.DB().Where("field_path = ?", in.FieldPath).First(&f).Error; err != nil {
 			f = model.DictUsageField{FieldPath: in.FieldPath}
 		}
 		f.Label, f.FieldType, f.Description = in.Label, in.FieldType, in.Description
-		if err := h.DB.Save(&f).Error; err != nil {
+		if err := h.App.DB().Save(&f).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "操作失败，请检查输入或服务端配置"})
 			return
 		}
@@ -226,7 +226,7 @@ func (h *Handlers) TestFeishu(c *gin.Context) {
 func (h *Handlers) ListSendLogs(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	size, _ := strconv.Atoi(c.DefaultQuery("size", "20"))
-	list, total, err := db.ListSendLogs(h.DB, page, size)
+	list, total, err := db.ListSendLogs(h.App.DB(), page, size)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "操作失败，请检查输入或服务端配置"})
 		return

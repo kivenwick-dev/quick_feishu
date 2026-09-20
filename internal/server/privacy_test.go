@@ -26,22 +26,22 @@ func TestReadAPIsNeverExposePrivateSnapshotData(t *testing.T) {
 		{Name: "账号", Source: "account", Fields: []report.Field{{Field: "username"}, {Field: "quota", Diff: false}, {Field: "email"}}},
 		{Name: "令牌", Source: "usage", PerToken: true, Fields: []report.Field{{Field: "key"}, {Field: "total_used", Diff: false}, {Field: "model_limits"}}},
 	}})
-	if err := db.SeedDicts(h.DB); err != nil {
+	if err := db.SeedDicts(h.App.DB()); err != nil {
 		t.Fatal(err)
 	}
 	var latest model.Snapshot
 	for i := 1; i <= 2; i++ {
 		snap := model.Snapshot{SnapshotDate: fmt.Sprintf("2026-09-%02d", i), AccountQuota: int64(10 * i), AccountRaw: datatypes.JSON(fmt.Sprintf(`{"username":"PRIVATE_USERNAME","email":"PRIVATE_EMAIL","quota":%d,"unknown_future_field":"PRIVATE_FUTURE"}`, 10*i)), TokenListRaw: datatypes.JSON(`[{"key":"PRIVATE_KEY"}]`), TokenUsageRaw: datatypes.JSON(`{"nested":{"secret":"PRIVATE_RAW"}}`)}
-		if err := h.DB.Create(&snap).Error; err != nil {
+		if err := h.App.DB().Create(&snap).Error; err != nil {
 			t.Fatal(err)
 		}
 		tok := model.TokenSnapshot{SnapshotID: snap.ID, TokenID: 123, TokenName: "测试令牌名称", UsageRaw: datatypes.JSON(fmt.Sprintf(`{"total_used":%d,"model_limits":{"secret":"PRIVATE_MODEL"}}`, i*5)), ListRaw: datatypes.JSON(`{"key":"PRIVATE_TOKEN_KEY"}`)}
-		if err := h.DB.Create(&tok).Error; err != nil {
+		if err := h.App.DB().Create(&tok).Error; err != nil {
 			t.Fatal(err)
 		}
 		latest = snap
 	}
-	h.DB.Create(&model.SendLog{ErrorMsg: "PRIVATE_ERROR_URL", FeishuResp: "PRIVATE_RESPONSE"})
+	h.App.DB().Create(&model.SendLog{ErrorMsg: "PRIVATE_ERROR_URL", FeishuResp: "PRIVATE_RESPONSE"})
 	s := New(0)
 	s.RegisterRoutes(h)
 	for _, path := range []string{"/api/dashboard", "/api/snapshots", fmt.Sprintf("/api/snapshots/%d", latest.ID), "/api/latest", "/api/history?source=account", "/api/history?source=usage&token_id=123", "/api/tokens", "/api/settings", "/api/sendlogs", "/api/compare?from=2026-09-01&to=2026-09-02"} {

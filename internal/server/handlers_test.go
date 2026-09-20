@@ -3,10 +3,13 @@ package server
 import (
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"quick-feishu/internal/app"
+	"quick-feishu/internal/config"
 	"quick-feishu/internal/db"
 	"quick-feishu/internal/model"
 )
@@ -14,11 +17,12 @@ import (
 func newTestHandlers(t *testing.T) *Handlers {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
-	gdb, err := db.Init(t.TempDir())
+	cfg := config.Default()
+	a, err := app.New(cfg, t.TempDir(), filepath.Join(t.TempDir(), "config.yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &Handlers{DB: gdb}
+	return &Handlers{App: a, Config: a.Config}
 }
 
 func TestDashboardEmpty(t *testing.T) {
@@ -59,8 +63,8 @@ func TestCompareSnapshotsMissing(t *testing.T) {
 
 func TestCompareSnapshotsOK(t *testing.T) {
 	h := newTestHandlers(t)
-	h.DB.Create(&model.Snapshot{SnapshotDate: "2026-09-17", AccountUsed: 100, RequestCount: 5})
-	h.DB.Create(&model.Snapshot{SnapshotDate: "2026-09-18", AccountUsed: 150, RequestCount: 9})
+	h.App.DB().Create(&model.Snapshot{SnapshotDate: "2026-09-17", AccountUsed: 100, RequestCount: 5})
+	h.App.DB().Create(&model.Snapshot{SnapshotDate: "2026-09-18", AccountUsed: 150, RequestCount: 9})
 	s := New(0)
 	s.RegisterRoutes(h)
 	w := httptest.NewRecorder()
@@ -77,7 +81,7 @@ func TestCompareSnapshotsOK(t *testing.T) {
 
 func TestGetDictAccount(t *testing.T) {
 	h := newTestHandlers(t)
-	if err := db.SeedDicts(h.DB); err != nil {
+	if err := db.SeedDicts(h.App.DB()); err != nil {
 		t.Fatal(err)
 	}
 	s := New(0)
