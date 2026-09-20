@@ -37,6 +37,9 @@ func Open(path string) (*gorm.DB, error) {
 		&model.DictTokenField{},
 		&model.DictUsageField{},
 	); err != nil {
+		if sqlDB, cerr := gdb.DB(); cerr == nil {
+			_ = sqlDB.Close()
+		}
 		return nil, err
 	}
 	return gdb, nil

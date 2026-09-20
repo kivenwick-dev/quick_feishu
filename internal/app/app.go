@@ -35,17 +35,29 @@ type App struct {
 	sched  *scheduler.Scheduler
 }
 
-// New 按 cfg.Account.UserID 迁移（首次）并打开对应账号库，返回 App。
-func New(cfg *config.Config, dataDir, configPath string) (*App, error) {
-	if err := db.MigrateLegacy(dataDir, cfg.Account.UserID); err != nil {
-		return nil, err
+// openAccountDB 迁移（首次）并打开指定账号库；任何一步失败都会关闭已打开的连接。
+func openAccountDB(dataDir, userID string) (*gorm.DB, string, error) {
+	if err := db.MigrateLegacy(dataDir, userID); err != nil {
+		return nil, "", err
 	}
-	path := db.Path(dataDir, cfg.Account.UserID)
+	path := db.Path(dataDir, userID)
 	gdb, err := db.Open(path)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if err := db.SeedDicts(gdb); err != nil {
+		if sqlDB, cerr := gdb.DB(); cerr == nil {
+			_ = sqlDB.Close()
+		}
+		return nil, "", err
+	}
+	return gdb, path, nil
+}
+
+// New 按 cfg.Account.UserID 迁移（首次）并打开对应账号库，返回 App。
+func New(cfg *config.Config, dataDir, configPath string) (*App, error) {
+	gdb, path, err := openAccountDB(dataDir, cfg.Account.UserID)
+	if err != nil {
 		return nil, err
 	}
 	a := &App{
@@ -75,8 +87,10 @@ func (a *App) Client() *api.Client {
 
 // RunSnapshot 采集并新增快照，保留同一天的每次采集记录。
 func (a *App) RunSnapshot() (*collector.Result, error) {
-	res := collector.Collect(a.Client())
-	if err := collector.Save(a.DB(), Today(), res); err != nil {
+	client := a.Client()
+	gdb := a.DB()
+	res := collector.Collect(client)
+	if err := collector.Save(gdb, Today(), res); err != nil {
 		return res, err
 	}
 	return res, nil
@@ -85,25 +99,28 @@ func (a *App) RunSnapshot() (*collector.Result, error) {
 // RunReport 取最近两日快照生成并发送日报。
 // 无快照时返回 (nil, error)；发送失败时返回 (log, error)。
 func (a *App) RunReport() (*model.SendLog, error) {
-	latest, err := db.LatestSnapshot(a.DB())
+	gdb := a.DB()
+	latest, err := db.LatestSnapshot(gdb)
 	if err != nil || latest == nil {
 		return nil, fmt.Errorf("no snapshots yet")
 	}
 	var prev *model.Snapshot
-	if p, e := db.SnapshotBefore(a.DB(), addDays(latest.SnapshotDate, -1)); e == nil {
+	if p, e := db.SnapshotBefore(gdb, addDays(latest.SnapshotDate, -1)); e == nil {
 		prev = p
 	}
 	tmpl, _ := report.TemplateFromMap(a.Config.ReportTemplate)
 	if tmpl == nil {
 		tmpl = report.DefaultTemplate()
 	}
-	return report.ExecuteReport(a.DB(), latest, prev, tmpl, a.Config.Feishu.WebhookURL, a.Config.Feishu.RetryTimes)
+	return report.ExecuteReport(gdb, latest, prev, tmpl, a.Config.Feishu.WebhookURL, a.Config.Feishu.RetryTimes)
 }
 
 // Backfill 启动补采缺失的历史快照
 func (a *App) Backfill() error {
-	return scheduler.BackfillMissing(a.DB(), a.Client(), Today(), func() *collector.Result {
-		return collector.Collect(a.Client())
+	gdb := a.DB()
+	client := a.Client()
+	return scheduler.BackfillMissing(gdb, client, Today(), func() *collector.Result {
+		return collector.Collect(client)
 	})
 }
 
@@ -165,21 +182,15 @@ func (a *App) restartLocked() (bool, error) {
 	switched := false
 	next := db.Path(a.dataDir, a.Config.Account.UserID)
 	if next != a.currentDBPath {
-		if err := db.MigrateLegacy(a.dataDir, a.Config.Account.UserID); err != nil {
-			return false, err
-		}
-		gdb, err := db.Open(next)
+		gdb, path, err := openAccountDB(a.dataDir, a.Config.Account.UserID)
 		if err != nil {
-			return false, err
-		}
-		if err := db.SeedDicts(gdb); err != nil {
 			return false, err
 		}
 		if sqlDB, cerr := a.db.DB(); cerr == nil {
 			_ = sqlDB.Close()
 		}
 		a.db = gdb
-		a.currentDBPath = next
+		a.currentDBPath = path
 		switched = true
 	}
 	a.client = api.NewClient(a.Config.Account.APIBase, a.Config.Account.SystemToken, a.Config.Account.UserID)
