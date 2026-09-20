@@ -22,4 +22,6 @@ export default {
   history: (source: string, tokenId?: number, limit = 30) => api.get('/history', { params: { source, token_id: tokenId, limit } }),
   tokens: () => api.get('/tokens'),
   latest: () => api.get('/latest'),
+  quotaRate: () => api.get('/quota-rate'),
+  liveBilling: () => api.get('/billing/live'),
 }

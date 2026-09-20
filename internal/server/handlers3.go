@@ -3,12 +3,50 @@ package server
 import (
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"quick-feishu/internal/db"
 	"quick-feishu/internal/model"
 	"quick-feishu/internal/report"
 )
+
+// GetLiveBilling reads the current account balance and platform conversion rate directly.
+// It deliberately bypasses snapshots so the dashboard can refresh monetary values in real time.
+func (h *Handlers) GetLiveBilling(c *gin.Context) {
+	client := h.App.Client()
+	account, _, accountErr := client.GetAccount()
+	status, statusErr := client.GetStatus()
+	if accountErr != nil || statusErr != nil || account == nil || status == nil || status.QuotaPerUnit <= 0 {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "无法获取实时账务数据"})
+		return
+	}
+	rate := status.QuotaPerUnit
+	c.JSON(http.StatusOK, gin.H{
+		"quota":               account.Quota,
+		"used_quota":          account.UsedQuota,
+		"quota_per_unit":      rate,
+		"balance_usd":         float64(account.Quota) / float64(rate),
+		"used_usd":            float64(account.UsedQuota) / float64(rate),
+		"currency":            "USD",
+		"display_in_currency": status.DisplayInCurrency,
+		"updated_at":          time.Now(),
+	})
+}
+
+// GetQuotaRate returns the platform's live quota-to-currency conversion setting.
+func (h *Handlers) GetQuotaRate(c *gin.Context) {
+	status, err := h.App.Client().GetStatus()
+	if err != nil || status.QuotaPerUnit <= 0 {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "无法获取额度换算配置"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"quota_per_unit":      status.QuotaPerUnit,
+		"display_in_currency": status.DisplayInCurrency,
+		"currency":            "USD",
+	})
+}
 
 // GetHistory 返回某接口的每日指标矩阵（账号信息 / 令牌使用情况）
 func (h *Handlers) GetHistory(c *gin.Context) {

@@ -6,6 +6,11 @@ vi.mock('./api', () => ({
   default: {
     dashboard: vi.fn().mockResolvedValue({ data: { latest_snapshot: null, recent_logs: [] } }),
     latest: vi.fn().mockResolvedValue({ data: { date: null, sections: [] } }),
+    quotaRate: vi.fn().mockResolvedValue({ data: { quota_per_unit: 500000, currency: 'USD' } }),
+    liveBilling: vi.fn().mockResolvedValue({ data: {
+      quota: 0, used_quota: 0, quota_per_unit: 500000,
+      balance_usd: 0, used_usd: 0, updated_at: '2026-09-20T12:00:00+08:00',
+    } }),
     runSnapshot: vi.fn(),
     sendReport: vi.fn(),
     testFeishu: vi.fn(),
@@ -20,6 +25,31 @@ describe('Dashboard', () => {
     localStorage.clear()
     vi.mocked(api.dashboard).mockResolvedValue({ data: { latest_snapshot: null, recent_logs: [] } } as any)
     vi.mocked(api.latest).mockResolvedValue({ data: { date: null, sections: [] } } as any)
+    vi.mocked(api.quotaRate).mockResolvedValue({ data: { quota_per_unit: 500000, currency: 'USD' } } as any)
+    vi.mocked(api.liveBilling).mockResolvedValue({ data: {
+      quota: 0, used_quota: 0, quota_per_unit: 500000,
+      balance_usd: 0, used_usd: 0, updated_at: '2026-09-20T12:00:00+08:00',
+    } } as any)
+  })
+
+  it('converts the latest balance and historical usage with the live quota rate', async () => {
+    vi.mocked(api.liveBilling).mockResolvedValue({ data: {
+      quota: 7526436992,
+      used_quota: 24299227753,
+      quota_per_unit: 500000,
+      balance_usd: 15052.873984,
+      used_usd: 48598.455506,
+      updated_at: '2026-09-20T12:00:00+08:00',
+    } } as any)
+    const wrapper = mount(Dashboard, { global: { plugins: [ElementPlus] } })
+    await flushPromises()
+
+    expect(wrapper.find('.currency-panel').text()).toContain('$15,052.87')
+    expect(wrapper.find('.currency-panel').text()).toContain('$48,598.46')
+    expect(wrapper.find('.currency-panel').text()).toContain('500,000 quota')
+    expect(wrapper.find('.currency-panel').text()).toContain('= $1.00 USD')
+    expect(wrapper.find('.currency-panel').text()).toContain('quota ÷ quota_per_unit = USD')
+    wrapper.unmount()
   })
 
   it('mounts without error', () => {

@@ -7,6 +7,8 @@ describe('api module', () => {
       'dashboard', 'runSnapshot', 'sendReport', 'snapshots', 'snapshot',
       'compare', 'getTemplate', 'saveTemplate', 'getDict', 'saveDict',
       'getSettings', 'saveSettings', 'testFeishu', 'sendLogs',
+      'quotaRate',
+      'liveBilling',
     ]
     for (const m of methods) {
       expect(typeof (api as any)[m]).toBe('function')

@@ -33,6 +33,36 @@
       </div>
     </el-card>
 
+    <div v-if="liveBilling" class="currency-panel metric-panel">
+      <div class="group-title">
+        实时美元账务
+        <el-tag size="small" type="success">每 30 秒自动更新</el-tag>
+        <el-tag v-if="billingUpdatedAt" size="small" type="info">更新于 {{ billingUpdatedAt }}</el-tag>
+      </div>
+      <div class="currency-grid">
+        <div class="currency-card">
+          <span>当前余额</span>
+          <strong>{{ formatUSD(liveBilling.balance_usd) }}</strong>
+          <small>{{ formatInteger(liveBilling.quota) }} quota</small>
+        </div>
+        <div class="currency-card">
+          <span>历史消耗</span>
+          <strong>{{ formatUSD(liveBilling.used_usd) }}</strong>
+          <small>{{ formatInteger(liveBilling.used_quota) }} quota</small>
+        </div>
+        <div class="currency-card">
+          <span>汇率</span>
+          <strong>{{ formatInteger(liveBilling.quota_per_unit) }} quota</strong>
+          <small>= $1.00 USD</small>
+        </div>
+      </div>
+      <div class="currency-formula">
+        <span>计算公式</span>
+        <code>quota ÷ quota_per_unit = USD</code>
+      </div>
+      <el-alert v-if="billingError" type="warning" :closable="false" show-icon :title="billingError" />
+    </div>
+
     <el-empty v-if="!date" description="暂无快照，请先点击『立即采集快照』" :image-size="80" style="margin-top: 24px" />
 
     <div v-for="sec in visibleSections" :key="sec.key" class="group metric-panel">
@@ -87,7 +117,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import api from '../api'
 import CollectionIssuesDialog from '../components/CollectionIssuesDialog.vue'
@@ -96,11 +126,26 @@ import MetricCard from '../components/MetricCard.vue'
 import { negativeQuotaNote } from '../metricNotes'
 
 const date = ref<string | null>(null)
+const liveBilling = ref<any | null>(null)
+const billingError = ref('')
+const billingUpdatedAt = ref('')
+let billingTimer: ReturnType<typeof setInterval> | undefined
+let billingRefreshing = false
 const realSections = ref<any[]>([])
 const sections = computed(() => realSections.value)
 const visibleMetricKeys = ref<string[]>([])
 const metricSelectionInitialized = ref(false)
 const metricSelectionStorageKey = 'quick-feishu.dashboard.visible-metrics'
+
+const usdFormatter = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+})
+const integerFormatter = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 })
+function formatUSD(value: number) { return usdFormatter.format(value) }
+function formatInteger(value: number) { return integerFormatter.format(value) }
 
 function restoreMetricSelection() {
   try {
@@ -171,14 +216,39 @@ const issues = ref<Issue[]>([])
 const issuesDialog = ref(false)
 
 async function load() {
-  const res = await api.dashboard()
+  const [res, latest] = await Promise.all([
+    api.dashboard(),
+    api.latest(),
+  ])
   logs.value = res.data.recent_logs || []
-  const latest = await api.latest()
   date.value = latest.data.date
   realSections.value = latest.data.sections || []
   syncMetricSelection()
 }
-onMounted(load)
+
+async function refreshLiveBilling() {
+  if (billingRefreshing) return
+  billingRefreshing = true
+  try {
+    const res = await api.liveBilling()
+    liveBilling.value = res.data
+    billingUpdatedAt.value = new Date(res.data.updated_at).toLocaleTimeString('zh-CN', { hour12: false })
+    billingError.value = ''
+  } catch {
+    billingError.value = '实时账务更新失败，继续显示上一次成功获取的数据'
+  } finally {
+    billingRefreshing = false
+  }
+}
+
+onMounted(() => {
+  load()
+  refreshLiveBilling()
+  billingTimer = setInterval(refreshLiveBilling, 30_000)
+})
+onBeforeUnmount(() => {
+  if (billingTimer) clearInterval(billingTimer)
+})
 
 async function runSnapshot() {
   try {
@@ -186,7 +256,7 @@ async function runSnapshot() {
     ElMessage.success(`快照已采集: ${res.data.date}`)
     issues.value = res.data.issues || []
     if (issues.value.length) issuesDialog.value = true
-    load()
+    await Promise.all([load(), refreshLiveBilling()])
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.error || '采集失败')
   }
@@ -219,6 +289,57 @@ async function testFeishu() {
 
 .metric-filter-card {
   margin-top: 16px;
+}
+
+.currency-panel {
+  margin-top: 16px;
+}
+
+.currency-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 240px));
+  gap: 12px;
+}
+
+.currency-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--el-border-color-lighter, #ebeef5);
+  border-radius: 8px;
+  color: var(--el-text-color-regular, #606266);
+}
+
+.currency-card strong {
+  color: var(--el-text-color-primary, #303133);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 22px;
+}
+
+.currency-card small {
+  color: var(--el-text-color-secondary, #909399);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.currency-formula {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  color: var(--el-text-color-secondary, #909399);
+  font-size: 12px;
+}
+
+.currency-formula code {
+  padding: 4px 8px;
+  border-radius: 5px;
+  background: var(--el-fill-color-light, #f5f7fa);
+  color: var(--el-text-color-primary, #303133);
+}
+
+@container (max-width: 559px) {
+  .currency-grid { grid-template-columns: minmax(0, 1fr); }
 }
 
 .metric-filter {

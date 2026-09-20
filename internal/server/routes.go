@@ -28,6 +28,8 @@ func (s *Server) RegisterRoutes(h *Handlers) {
 		api.GET("/history", h.GetHistory)
 		api.GET("/tokens", h.GetTokens)
 		api.GET("/latest", h.GetLatest)
+		api.GET("/quota-rate", h.GetQuotaRate)
+		api.GET("/billing/live", h.GetLiveBilling)
 		api.GET("/template", h.GetTemplate)
 		api.PUT("/template", h.SaveTemplate)
 		api.GET("/dict/:source", h.GetDict)

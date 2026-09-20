@@ -118,6 +118,66 @@ func TestUnknownAPIReturns404(t *testing.T) {
 	}
 }
 
+func TestGetQuotaRate(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/status" {
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{"data":{"quota_per_unit":500000,"display_in_currency":true},"success":true}`))
+	}))
+	defer srv.Close()
+
+	cfg := config.Default()
+	cfg.Account.APIBase = srv.URL
+	a, err := app.New(cfg, t.TempDir(), filepath.Join(t.TempDir(), "config.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := &Handlers{App: a}
+	s := New(0)
+	s.RegisterRoutes(h)
+	w := httptest.NewRecorder()
+	s.Engine.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/quota-rate", nil))
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"quota_per_unit":500000`) {
+		t.Fatalf("code = %d body = %s", w.Code, w.Body.String())
+	}
+}
+
+func TestGetLiveBilling(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/user/self":
+			_, _ = w.Write([]byte(`{"data":{"id":822572,"quota":7526436992,"used_quota":24299227753},"success":true}`))
+		case "/api/status":
+			_, _ = w.Write([]byte(`{"data":{"quota_per_unit":500000,"display_in_currency":true},"success":true}`))
+		default:
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	cfg := config.Default()
+	cfg.Account.UserID = "822572"
+	cfg.Account.APIBase = srv.URL
+	a, err := app.New(cfg, t.TempDir(), filepath.Join(t.TempDir(), "config.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := &Handlers{App: a}
+	s := New(0)
+	s.RegisterRoutes(h)
+	w := httptest.NewRecorder()
+	s.Engine.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/billing/live", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d body = %s", w.Code, w.Body.String())
+	}
+	for _, want := range []string{`"quota":7526436992`, `"used_quota":24299227753`, `"quota_per_unit":500000`, `"balance_usd":15052.873984`, `"used_usd":48598.455506`} {
+		if !strings.Contains(w.Body.String(), want) {
+			t.Errorf("missing %s in %s", want, w.Body.String())
+		}
+	}
+}
+
 func TestHandlersFollowAccountDatabaseSwitch(t *testing.T) {
 	for _, key := range []string{"QR_USER_ID", "QR_SYSTEM_TOKEN", "QR_FEISHU_WEBHOOK"} {
 		t.Setenv(key, "")
