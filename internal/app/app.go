@@ -85,10 +85,16 @@ func (a *App) Client() *api.Client {
 	return a.client
 }
 
+// conn 在单次加锁下返回当前客户端与数据库，避免操作中途切库导致跨账号串写。
+func (a *App) conn() (*api.Client, *gorm.DB) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.client, a.db
+}
+
 // RunSnapshot 采集并新增快照，保留同一天的每次采集记录。
 func (a *App) RunSnapshot() (*collector.Result, error) {
-	client := a.Client()
-	gdb := a.DB()
+	client, gdb := a.conn()
 	res := collector.Collect(client)
 	if err := collector.Save(gdb, Today(), res); err != nil {
 		return res, err
@@ -117,8 +123,7 @@ func (a *App) RunReport() (*model.SendLog, error) {
 
 // Backfill 启动补采缺失的历史快照
 func (a *App) Backfill() error {
-	gdb := a.DB()
-	client := a.Client()
+	client, gdb := a.conn()
 	return scheduler.BackfillMissing(gdb, client, Today(), func() *collector.Result {
 		return collector.Collect(client)
 	})
