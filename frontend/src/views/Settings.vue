@@ -33,7 +33,7 @@
           <span class="hint">端口修改需重启进程</span>
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" @click="save">保存</el-button>
+          <el-button type="primary" :loading="restarting" @click="restart">保存并应用</el-button>
           <el-button @click="testFeishu">测试飞书连接</el-button>
         </el-form-item>
       </el-form>
@@ -108,16 +108,6 @@ async function persist() {
   await api.saveSettings(cfg.value)
 }
 
-async function save() {
-  try {
-    await persist()
-    await load()
-    ElMessage.success('设置已保存')
-  } catch (e: any) {
-    ElMessage.error(e?.response?.data?.error || '保存失败')
-  }
-}
-
 async function restart() {
   restarting.value = true
   try {
@@ -128,7 +118,7 @@ async function restart() {
     if (data.snapshot_error) {
       ElMessage.warning('定时任务已重启，但快照采集失败：' + data.snapshot_error)
     } else if (!issues.value.length) {
-      ElMessage.success('已应用配置并重新采集当天快照')
+      ElMessage.success('配置已应用，账号数据已切换并更新')
     }
     if (issues.value.length) issuesDialog.value = true
     await load()

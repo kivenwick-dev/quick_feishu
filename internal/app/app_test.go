@@ -18,7 +18,7 @@ func clearCredentialEnv(t *testing.T) {
 	}
 }
 
-// stubAPIServer 对所有请求返回 200 {}，使切库后的 Backfill 保持离线。
+// stubAPIServer 对所有请求返回 200 {}，用于验证客户端与调度器重启。
 func stubAPIServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -156,6 +156,10 @@ func TestRestartSwitchesDatabase(t *testing.T) {
 	if count != 0 {
 		t.Fatalf("account A data leaked into account B db: count = %d", count)
 	}
+	a.DB().Model(&model.Snapshot{}).Count(&count)
+	if count != 0 {
+		t.Fatalf("restart must leave immediate collection to its caller, snapshots = %d", count)
+	}
 }
 
 func TestRestartSameUserKeepsDatabase(t *testing.T) {
@@ -194,5 +198,19 @@ func TestEmptyUserIDUsesLegacyPath(t *testing.T) {
 	}
 	if want := filepath.Join(dir, "quick-feishu.db"); a.currentDBPath != want {
 		t.Fatalf("currentDBPath = %s, want %s", a.currentDBPath, want)
+	}
+}
+
+func TestConfigSnapshotIsCopy(t *testing.T) {
+	cfg := config.Default()
+	cfg.Account.UserID = "u1"
+	a, err := New(cfg, t.TempDir(), filepath.Join(t.TempDir(), "config.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	snap := a.ConfigSnapshot()
+	snap.Account.UserID = "mutated"
+	if got := a.ConfigSnapshot().Account.UserID; got != "u1" {
+		t.Fatalf("ConfigSnapshot must return a copy, got %s", got)
 	}
 }

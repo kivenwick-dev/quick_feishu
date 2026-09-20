@@ -59,7 +59,7 @@ func (h *Handlers) GetLatest(c *gin.Context) {
 	if p, e := db.PreviousSnapshot(gdb, latest); e == nil {
 		prev = p
 	}
-	tmpl, _ := report.TemplateFromMap(h.Config.ReportTemplate)
+	tmpl, _ := report.TemplateFromMap(h.App.ConfigSnapshot().ReportTemplate)
 	if tmpl == nil {
 		tmpl = report.DefaultTemplate()
 	}

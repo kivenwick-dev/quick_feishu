@@ -37,14 +37,31 @@ func baseDir() string {
 	return filepath.Dir(exe)
 }
 
+// resolveDataDir 返回数据库等运行数据目录：优先 QF_DATA_DIR（容器里通常指向挂载卷），
+// 否则回退到可执行文件目录下的 data/。
+func resolveDataDir() string {
+	if dir := os.Getenv("QF_DATA_DIR"); dir != "" {
+		return dir
+	}
+	return filepath.Join(baseDir(), "data")
+}
+
+// resolveConfigPath 返回配置文件路径：优先 QF_CONFIG_FILE（只读根文件系统时挂载单个文件），
+// 否则回退到可执行文件目录下的 config.yaml。
+func resolveConfigPath() string {
+	if path := os.Getenv("QF_CONFIG_FILE"); path != "" {
+		return path
+	}
+	return filepath.Join(baseDir(), "config.yaml")
+}
+
 func newApp() (*app.App, error) {
-	dir := baseDir()
-	cfgPath := filepath.Join(dir, "config.yaml")
+	cfgPath := resolveConfigPath()
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
 		return nil, fmt.Errorf("config error: %w", err)
 	}
-	a, err := app.New(cfg, filepath.Join(dir, "data"), cfgPath)
+	a, err := app.New(cfg, resolveDataDir(), cfgPath)
 	if err != nil {
 		return nil, fmt.Errorf("db error: %w", err)
 	}
@@ -73,7 +90,7 @@ func serve() {
 		fmt.Println("port error:", err)
 		os.Exit(1)
 	}
-	handlers := &server.Handlers{App: a, Config: a.Config, ConfigPath: a.ConfigPath}
+	handlers := &server.Handlers{App: a}
 	srv.RegisterRoutes(handlers)
 	url := fmt.Sprintf("http://localhost:%d/", port)
 	fmt.Println("QuickFeishu running at", url)

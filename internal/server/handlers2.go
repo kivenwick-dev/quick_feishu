@@ -57,7 +57,7 @@ func (h *Handlers) CompareSnapshots(c *gin.Context) {
 }
 
 func (h *Handlers) GetTemplate(c *gin.Context) {
-	c.JSON(http.StatusOK, h.Config.ReportTemplate)
+	c.JSON(http.StatusOK, h.App.ConfigSnapshot().ReportTemplate)
 }
 
 func (h *Handlers) SaveTemplate(c *gin.Context) {
@@ -159,14 +159,15 @@ func (h *Handlers) SaveDict(c *gin.Context) {
 }
 
 func (h *Handlers) GetSettings(c *gin.Context) {
-	public := *h.Config
+	snapshot := h.App.ConfigSnapshot()
+	public := snapshot
 	public.Account.UserID = ""
 	public.Account.SystemToken = ""
 	public.Account.APIBase = ""
 	public.Feishu.WebhookURL = ""
 	c.JSON(http.StatusOK, gin.H{
 		"config":         public,
-		"configured":     gin.H{"user_id": h.Config.Account.UserID != "", "system_token": h.Config.Account.SystemToken != "", "api_base": h.Config.Account.APIBase != "", "webhook_url": h.Config.Feishu.WebhookURL != ""},
+		"configured":     gin.H{"user_id": snapshot.Account.UserID != "", "system_token": snapshot.Account.SystemToken != "", "api_base": snapshot.Account.APIBase != "", "webhook_url": snapshot.Feishu.WebhookURL != ""},
 		"env_overridden": config.EnvOverridden(),
 	})
 }
@@ -207,15 +208,16 @@ func (h *Handlers) RestartScheduler(c *gin.Context) {
 
 // SchedulerStatus 返回定时任务时间与下次执行时间
 func (h *Handlers) SchedulerStatus(c *gin.Context) {
+	snapshot := h.App.ConfigSnapshot()
 	c.JSON(http.StatusOK, gin.H{
-		"snapshot_time": h.Config.Schedule.SnapshotTime,
-		"report_time":   h.Config.Schedule.ReportTime,
+		"snapshot_time": snapshot.Schedule.SnapshotTime,
+		"report_time":   snapshot.Schedule.ReportTime,
 		"next_runs":     h.App.NextRuns(),
 	})
 }
 
 func (h *Handlers) TestFeishu(c *gin.Context) {
-	client := feishu.NewClient(h.Config.Feishu.WebhookURL, 1)
+	client := feishu.NewClient(h.App.ConfigSnapshot().Feishu.WebhookURL, 1)
 	body := []byte(`{"msg_type":"text","content":{"text":"QuickFeishu 测试消息"}}`)
 	_, err := client.SendCard(body)
 	if err != nil {

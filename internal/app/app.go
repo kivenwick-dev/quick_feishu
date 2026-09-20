@@ -92,6 +92,14 @@ func (a *App) conn() (*api.Client, *gorm.DB) {
 	return a.client, a.db
 }
 
+// ConfigSnapshot 在锁内返回当前配置的副本，供只读使用，
+// 避免与切库/保存配置并发读写同一 config.Config。
+func (a *App) ConfigSnapshot() config.Config {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return *a.Config
+}
+
 // reportDeps 是生成日报所需的、在单次加锁下取得的依赖快照。
 type reportDeps struct {
 	gdb        *gorm.DB
@@ -116,7 +124,7 @@ func (a *App) reportDeps() reportDeps {
 func (a *App) RunSnapshot() (*collector.Result, error) {
 	client, gdb := a.conn()
 	res := collector.Collect(client)
-	if err := collector.Save(gdb, Today(), res); err != nil {
+	if err := collector.SaveForAccount(gdb, Today(), res, client.UserID); err != nil {
 		return res, err
 	}
 	return res, nil
@@ -186,18 +194,12 @@ func (a *App) StartScheduler() error {
 }
 
 // Restart 重载配置、按账号切库（如有变化）、重建 API 客户端并重启定时任务。
-// 若发生了切库，释放锁后对空库执行 Backfill（Backfill 会再次加锁，不能持锁调用）。
+// 立即采集由调用方在 Restart 成功后执行，避免首次切到空库时 Backfill 与立即采集重复写入。
 func (a *App) Restart() error {
 	a.mu.Lock()
-	switched, err := a.restartLocked()
+	_, err := a.restartLocked()
 	a.mu.Unlock()
-	if err != nil {
-		return err
-	}
-	if switched {
-		return a.Backfill()
-	}
-	return nil
+	return err
 }
 
 func (a *App) restartLocked() (bool, error) {

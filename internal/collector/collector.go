@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"gorm.io/datatypes"
@@ -168,4 +169,23 @@ func Save(gdb *gorm.DB, date string, res *Result) error {
 		}
 		return nil
 	})
+}
+
+// SaveForAccount verifies the account endpoint before writing into an account-specific database.
+// This prevents a stale/mismatched credential pair from contaminating another account's history.
+func SaveForAccount(gdb *gorm.DB, date string, res *Result, userID string) error {
+	userID = strings.TrimSpace(userID)
+	if userID != "" {
+		if res == nil || res.Account == nil {
+			return fmt.Errorf("cannot verify snapshot account %s: account data unavailable", userID)
+		}
+		configuredID, err := strconv.Atoi(userID)
+		if err != nil {
+			return fmt.Errorf("invalid account user_id %q", userID)
+		}
+		if res.Account.ID != configuredID {
+			return fmt.Errorf("snapshot account mismatch: configured %d, received %d", configuredID, res.Account.ID)
+		}
+	}
+	return Save(gdb, date, res)
 }

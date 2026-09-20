@@ -166,6 +166,34 @@ func TestSaveRetainsSameDateCaptures(t *testing.T) {
 	}
 }
 
+func TestSaveForAccountRejectsMismatchedOrUnverifiedAccount(t *testing.T) {
+	gdb, err := db.Init(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	res := &Result{Account: &api.AccountData{ID: 822572}, Usages: map[int]*api.TokenUsageData{}}
+	if err := SaveForAccount(gdb, "2026-09-20", res, "827947"); err == nil {
+		t.Fatal("expected mismatched account to be rejected")
+	}
+	if err := SaveForAccount(gdb, "2026-09-20", &Result{Usages: map[int]*api.TokenUsageData{}}, "827947"); err == nil {
+		t.Fatal("expected unavailable account data to be rejected")
+	}
+
+	var count int64
+	gdb.Model(&model.Snapshot{}).Count(&count)
+	if count != 0 {
+		t.Fatalf("rejected snapshots were written: %d", count)
+	}
+	if err := SaveForAccount(gdb, "2026-09-20", res, "822572"); err != nil {
+		t.Fatal(err)
+	}
+	gdb.Model(&model.Snapshot{}).Count(&count)
+	if count != 1 {
+		t.Fatalf("verified snapshot count = %d, want 1", count)
+	}
+}
+
 func TestClassifyIssue(t *testing.T) {
 	cases := []struct {
 		name string

@@ -5,15 +5,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"quick-feishu/internal/app"
-	"quick-feishu/internal/config"
 	"quick-feishu/internal/db"
 	"quick-feishu/internal/model"
 )
 
 type Handlers struct {
-	App        *app.App
-	Config     *config.Config
-	ConfigPath string
+	App *app.App
 }
 
 func (h *Handlers) Dashboard(c *gin.Context) {

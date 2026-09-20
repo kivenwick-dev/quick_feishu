@@ -22,7 +22,7 @@ func newTestHandlers(t *testing.T) *Handlers {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &Handlers{App: a, Config: a.Config}
+	return &Handlers{App: a}
 }
 
 func TestDashboardEmpty(t *testing.T) {
@@ -137,7 +137,7 @@ func TestHandlersFollowAccountDatabaseSwitch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := &Handlers{App: a, Config: a.Config}
+	h := &Handlers{App: a}
 	if err := a.DB().Create(&model.Snapshot{SnapshotDate: "2026-09-18", AccountUsed: 777}).Error; err != nil {
 		t.Fatal(err)
 	}

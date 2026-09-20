@@ -16,16 +16,22 @@ import (
 )
 
 func TestReadAPIsNeverExposePrivateSnapshotData(t *testing.T) {
+	for _, key := range []string{"QR_USER_ID", "QR_SYSTEM_TOKEN", "QR_FEISHU_WEBHOOK"} {
+		t.Setenv(key, "")
+	}
 	h := newTestHandlers(t)
-	h.Config = config.Default()
-	h.Config.Account.UserID = "PRIVATE_ACCOUNT"
-	h.Config.Account.SystemToken = "PRIVATE_SYSTEM_TOKEN"
-	h.Config.Account.APIBase = "https://PRIVATE_HOST/?key=PRIVATE_KEY"
-	h.Config.Feishu.WebhookURL = "https://PRIVATE_WEBHOOK"
-	h.Config.ReportTemplate = mustToMap(&report.Template{Sections: []report.Section{
+	cfg := config.Default()
+	cfg.Account.UserID = "PRIVATE_ACCOUNT"
+	cfg.Account.SystemToken = "PRIVATE_SYSTEM_TOKEN"
+	cfg.Account.APIBase = "https://PRIVATE_HOST/?key=PRIVATE_KEY"
+	cfg.Feishu.WebhookURL = "https://PRIVATE_WEBHOOK"
+	cfg.ReportTemplate = mustToMap(&report.Template{Sections: []report.Section{
 		{Name: "账号", Source: "account", Fields: []report.Field{{Field: "username"}, {Field: "quota", Diff: false}, {Field: "email"}}},
 		{Name: "令牌", Source: "usage", PerToken: true, Fields: []report.Field{{Field: "key"}, {Field: "total_used", Diff: false}, {Field: "model_limits"}}},
 	}})
+	if err := h.App.SaveConfig(cfg); err != nil {
+		t.Fatal(err)
+	}
 	if err := db.SeedDicts(h.App.DB()); err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +109,7 @@ func TestReadAPIsNeverExposePrivateSnapshotData(t *testing.T) {
 			}
 		})
 	}
-	if h.Config.Account.SystemToken != "PRIVATE_SYSTEM_TOKEN" {
+	if h.App.ConfigSnapshot().Account.SystemToken != "PRIVATE_SYSTEM_TOKEN" {
 		t.Error("settings read mutated stored token")
 	}
 }

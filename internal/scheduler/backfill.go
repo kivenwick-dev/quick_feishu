@@ -15,7 +15,7 @@ func BackfillMissing(gdb *gorm.DB, c *api.Client, today string, collectFn func()
 	latest, err := db.LatestSnapshot(gdb)
 	if err != nil {
 		// 无任何快照：补采今天
-		return collector.Save(gdb, today, collectFn())
+		return collector.SaveForAccount(gdb, today, collectFn(), c.UserID)
 	}
 	start, perr := time.Parse("2006-01-02", latest.SnapshotDate)
 	if perr != nil {
@@ -26,7 +26,7 @@ func BackfillMissing(gdb *gorm.DB, c *api.Client, today string, collectFn func()
 		if dateStr > today {
 			break
 		}
-		if err := collector.Save(gdb, dateStr, collectFn()); err != nil {
+		if err := collector.SaveForAccount(gdb, dateStr, collectFn(), c.UserID); err != nil {
 			return err
 		}
 	}

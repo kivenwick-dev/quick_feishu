@@ -7,6 +7,9 @@
       <el-tooltip :content="displayValue" placement="top" :show-after="200" popper-class="metric-tooltip">
         <span class="metric-value" tabindex="0">{{ displayValue }}</span>
       </el-tooltip>
+      <el-tooltip v-if="note" :content="note" placement="top" :show-after="100" popper-class="metric-tooltip">
+        <span class="metric-note" tabindex="0" aria-label="初始值说明">ⓘ</span>
+      </el-tooltip>
     </div>
     <div class="metric-line change-line">
       <span class="change-label">变动：</span>
@@ -24,6 +27,7 @@ const props = defineProps<{
   label: string
   value?: string | number | null
   delta?: string | number | null
+  note?: string
 }>()
 
 const displayValue = computed(() =>
@@ -74,6 +78,13 @@ const displayDelta = computed(() => {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+.metric-note {
+  flex: none;
+  color: var(--el-color-warning, #e6a23c);
+  cursor: help;
+  font-size: 14px;
+  line-height: 1;
 }
 .metric-value {
   flex: 1 1 0;

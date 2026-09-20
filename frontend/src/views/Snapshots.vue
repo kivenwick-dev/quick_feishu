@@ -36,11 +36,13 @@
 
         <el-select
           v-model="visibleFields"
+          class="field-selector"
           multiple
           collapse-tags
           collapse-tags-tooltip
           placeholder="显示字段"
           style="width: 300px"
+          @change="rememberVisibleFields"
         >
           <el-option v-for="f in allFields" :key="f.path" :value="f.path" :label="f.label || f.path" />
         </el-select>
@@ -61,6 +63,7 @@
           :label="f.label || f.path"
           :value="row.values[f.path]"
           :delta="row.deltas[f.path]"
+          :note="source === 'usage' ? negativeQuotaNote(f.path, row.values[f.path]) : ''"
         />
       </div>
     </div>
@@ -86,23 +89,60 @@ import { computed, onMounted, ref } from 'vue'
 import api from '../api'
 import MetricCard from '../components/MetricCard.vue'
 import { formatSnapshotTime } from '../snapshotTime'
+import { negativeQuotaNote } from '../metricNotes'
 
 const source = ref<'account' | 'usage'>('account')
 const tokenId = ref<number | undefined>(undefined)
 const tokens = ref<any[]>([])
 const allFields = ref<any[]>([])
 const visibleFields = ref<string[]>([])
+const fieldSelections = new Map<string, string[]>()
+const fieldSelectionsStorageKey = 'quick-feishu.snapshots.visible-fields'
 const rows = ref<any[]>([])
+
+function restoreFieldSelections() {
+  try {
+    const saved = localStorage.getItem(fieldSelectionsStorageKey)
+    if (saved === null) return
+    const parsed = JSON.parse(saved)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return
+    for (const [key, paths] of Object.entries(parsed)) {
+      if (Array.isArray(paths) && paths.every((path) => typeof path === 'string')) {
+        fieldSelections.set(key, paths as string[])
+      }
+    }
+  } catch {
+    // Ignore unavailable storage and malformed data; each source will default to all fields.
+  }
+}
+
+function saveFieldSelections() {
+  try {
+    localStorage.setItem(fieldSelectionsStorageKey, JSON.stringify(Object.fromEntries(fieldSelections)))
+  } catch {
+    // Browsers may disable local storage; filtering still works for the current visit.
+  }
+}
+
+restoreFieldSelections()
 
 const range = ref<string[] | null>(null)
 const page = ref(1)
 const pageSize = ref(6)
 
 const shownFields = computed(() => {
-  if (!visibleFields.value.length) return allFields.value
   const set = new Set(visibleFields.value)
   return allFields.value.filter((f) => set.has(f.path))
 })
+
+function selectionKey() {
+  return source.value === 'usage' ? `usage:${tokenId.value ?? ''}` : 'account'
+}
+
+function rememberVisibleFields() {
+  fieldSelections.set(selectionKey(), [...visibleFields.value])
+  saveFieldSelections()
+}
 
 const filteredRows = computed(() => {
   let r = rows.value
@@ -143,7 +183,12 @@ async function load() {
   const res = await api.history(source.value, source.value === 'usage' ? tokenId.value : undefined, 0)
   allFields.value = res.data.fields || []
   rows.value = (res.data.rows || []).slice().reverse() // 按日期及采集顺序倒序
-  visibleFields.value = allFields.value.map((f: any) => f.path)
+  const available = new Set(allFields.value.map((f: any) => f.path))
+  const saved = fieldSelections.get(selectionKey())
+  visibleFields.value = saved === undefined
+    ? allFields.value.map((f: any) => f.path)
+    : saved.filter((path) => available.has(path))
+  if (saved === undefined) rememberVisibleFields()
   page.value = 1
 }
 
