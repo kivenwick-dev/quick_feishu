@@ -92,6 +92,26 @@ func (a *App) conn() (*api.Client, *gorm.DB) {
 	return a.client, a.db
 }
 
+// reportDeps 是生成日报所需的、在单次加锁下取得的依赖快照。
+type reportDeps struct {
+	gdb        *gorm.DB
+	template   map[string]interface{}
+	webhookURL string
+	retryTimes int
+}
+
+// reportDeps 单次加锁返回数据库与日报配置快照，避免切库时把旧账号数据发到新账号 webhook。
+func (a *App) reportDeps() reportDeps {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return reportDeps{
+		gdb:        a.db,
+		template:   a.Config.ReportTemplate,
+		webhookURL: a.Config.Feishu.WebhookURL,
+		retryTimes: a.Config.Feishu.RetryTimes,
+	}
+}
+
 // RunSnapshot 采集并新增快照，保留同一天的每次采集记录。
 func (a *App) RunSnapshot() (*collector.Result, error) {
 	client, gdb := a.conn()
@@ -105,20 +125,20 @@ func (a *App) RunSnapshot() (*collector.Result, error) {
 // RunReport 取最近两日快照生成并发送日报。
 // 无快照时返回 (nil, error)；发送失败时返回 (log, error)。
 func (a *App) RunReport() (*model.SendLog, error) {
-	gdb := a.DB()
-	latest, err := db.LatestSnapshot(gdb)
+	deps := a.reportDeps()
+	latest, err := db.LatestSnapshot(deps.gdb)
 	if err != nil || latest == nil {
 		return nil, fmt.Errorf("no snapshots yet")
 	}
 	var prev *model.Snapshot
-	if p, e := db.SnapshotBefore(gdb, addDays(latest.SnapshotDate, -1)); e == nil {
+	if p, e := db.SnapshotBefore(deps.gdb, addDays(latest.SnapshotDate, -1)); e == nil {
 		prev = p
 	}
-	tmpl, _ := report.TemplateFromMap(a.Config.ReportTemplate)
+	tmpl, _ := report.TemplateFromMap(deps.template)
 	if tmpl == nil {
 		tmpl = report.DefaultTemplate()
 	}
-	return report.ExecuteReport(gdb, latest, prev, tmpl, a.Config.Feishu.WebhookURL, a.Config.Feishu.RetryTimes)
+	return report.ExecuteReport(deps.gdb, latest, prev, tmpl, deps.webhookURL, deps.retryTimes)
 }
 
 // Backfill 启动补采缺失的历史快照
