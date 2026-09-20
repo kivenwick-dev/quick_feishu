@@ -24,19 +24,46 @@ func Today() string { return time.Now().In(loc).Format("2006-01-02") }
 // App 管理运行时状态：数据库、配置、API 客户端与定时任务。
 // API 客户端可在账号配置变更后重建；定时任务可重启以应用新配置。
 type App struct {
-	mu         sync.Mutex
-	DB         *gorm.DB
-	Config     *config.Config
-	ConfigPath string
+	mu            sync.Mutex
+	db            *gorm.DB
+	Config        *config.Config
+	ConfigPath    string
+	dataDir       string
+	currentDBPath string
 
 	client *api.Client
 	sched  *scheduler.Scheduler
 }
 
-func New(cfg *config.Config, gdb *gorm.DB, configPath string) *App {
-	a := &App{DB: gdb, Config: cfg, ConfigPath: configPath}
+// New 按 cfg.Account.UserID 迁移（首次）并打开对应账号库，返回 App。
+func New(cfg *config.Config, dataDir, configPath string) (*App, error) {
+	if err := db.MigrateLegacy(dataDir, cfg.Account.UserID); err != nil {
+		return nil, err
+	}
+	path := db.Path(dataDir, cfg.Account.UserID)
+	gdb, err := db.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	if err := db.SeedDicts(gdb); err != nil {
+		return nil, err
+	}
+	a := &App{
+		db:            gdb,
+		Config:        cfg,
+		ConfigPath:    configPath,
+		dataDir:       dataDir,
+		currentDBPath: path,
+	}
 	a.client = api.NewClient(cfg.Account.APIBase, cfg.Account.SystemToken, cfg.Account.UserID)
-	return a
+	return a, nil
+}
+
+// DB 返回当前账号库（切库后指向新库）。
+func (a *App) DB() *gorm.DB {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.db
 }
 
 // Client 返回当前 API 客户端（可能已被重建）
@@ -49,7 +76,7 @@ func (a *App) Client() *api.Client {
 // RunSnapshot 采集并新增快照，保留同一天的每次采集记录。
 func (a *App) RunSnapshot() (*collector.Result, error) {
 	res := collector.Collect(a.Client())
-	if err := collector.Save(a.DB, Today(), res); err != nil {
+	if err := collector.Save(a.DB(), Today(), res); err != nil {
 		return res, err
 	}
 	return res, nil
@@ -58,24 +85,24 @@ func (a *App) RunSnapshot() (*collector.Result, error) {
 // RunReport 取最近两日快照生成并发送日报。
 // 无快照时返回 (nil, error)；发送失败时返回 (log, error)。
 func (a *App) RunReport() (*model.SendLog, error) {
-	latest, err := db.LatestSnapshot(a.DB)
+	latest, err := db.LatestSnapshot(a.DB())
 	if err != nil || latest == nil {
 		return nil, fmt.Errorf("no snapshots yet")
 	}
 	var prev *model.Snapshot
-	if p, e := db.SnapshotBefore(a.DB, addDays(latest.SnapshotDate, -1)); e == nil {
+	if p, e := db.SnapshotBefore(a.DB(), addDays(latest.SnapshotDate, -1)); e == nil {
 		prev = p
 	}
 	tmpl, _ := report.TemplateFromMap(a.Config.ReportTemplate)
 	if tmpl == nil {
 		tmpl = report.DefaultTemplate()
 	}
-	return report.ExecuteReport(a.DB, latest, prev, tmpl, a.Config.Feishu.WebhookURL, a.Config.Feishu.RetryTimes)
+	return report.ExecuteReport(a.DB(), latest, prev, tmpl, a.Config.Feishu.WebhookURL, a.Config.Feishu.RetryTimes)
 }
 
 // Backfill 启动补采缺失的历史快照
 func (a *App) Backfill() error {
-	return scheduler.BackfillMissing(a.DB, a.Client(), Today(), func() *collector.Result {
+	return scheduler.BackfillMissing(a.DB(), a.Client(), Today(), func() *collector.Result {
 		return collector.Collect(a.Client())
 	})
 }
@@ -116,16 +143,50 @@ func (a *App) StartScheduler() error {
 	return a.startLocked()
 }
 
-// Restart 重新从磁盘加载配置、重建 API 客户端并重启定时任务。
-// 用于账号/令牌/时间变更后生效。
+// Restart 重载配置、按账号切库（如有变化）、重建 API 客户端并重启定时任务。
+// 若发生了切库，释放锁后对空库执行 Backfill（Backfill 会再次加锁，不能持锁调用）。
 func (a *App) Restart() error {
 	a.mu.Lock()
-	defer a.mu.Unlock()
+	switched, err := a.restartLocked()
+	a.mu.Unlock()
+	if err != nil {
+		return err
+	}
+	if switched {
+		return a.Backfill()
+	}
+	return nil
+}
+
+func (a *App) restartLocked() (bool, error) {
 	if cfg, err := config.Load(a.ConfigPath); err == nil {
 		*a.Config = *cfg
 	}
+	switched := false
+	next := db.Path(a.dataDir, a.Config.Account.UserID)
+	if next != a.currentDBPath {
+		if err := db.MigrateLegacy(a.dataDir, a.Config.Account.UserID); err != nil {
+			return false, err
+		}
+		gdb, err := db.Open(next)
+		if err != nil {
+			return false, err
+		}
+		if err := db.SeedDicts(gdb); err != nil {
+			return false, err
+		}
+		if sqlDB, cerr := a.db.DB(); cerr == nil {
+			_ = sqlDB.Close()
+		}
+		a.db = gdb
+		a.currentDBPath = next
+		switched = true
+	}
 	a.client = api.NewClient(a.Config.Account.APIBase, a.Config.Account.SystemToken, a.Config.Account.UserID)
-	return a.startLocked()
+	if err := a.startLocked(); err != nil {
+		return switched, err
+	}
+	return switched, nil
 }
 
 // NextRuns 返回各定时任务的下次执行时间
