@@ -57,6 +57,52 @@ func TestBuildSectionsAccountUsesDictLabel(t *testing.T) {
 	}
 }
 
+func TestBuildSectionsAccountDerivedUSDFields(t *testing.T) {
+	gdb, err := db.Init(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SeedDicts(gdb); err != nil {
+		t.Fatal(err)
+	}
+
+	prev := &model.Snapshot{
+		SnapshotDate: "2026-09-17",
+		AccountRaw:   mustJSON(t, map[string]interface{}{}),
+		AccountQuota: 33400000000,
+		AccountUsed:  29300000000,
+	}
+	latest := &model.Snapshot{
+		SnapshotDate: "2026-09-18",
+		AccountRaw:   mustJSON(t, map[string]interface{}{}),
+		AccountQuota: 33454114092,
+		AccountUsed:  29360568243,
+	}
+	gdb.Create(prev)
+	gdb.Create(latest)
+
+	tmpl := &Template{Sections: []Section{
+		{Name: "美元账务", Source: "account", Fields: []Field{
+			{Field: "balance_usd", Diff: true},
+			{Field: "used_usd", Diff: true},
+		}},
+	}}
+	secs := BuildSections(gdb, latest, prev, tmpl)
+	if len(secs) != 1 {
+		t.Fatalf("sections = %d, want 1", len(secs))
+	}
+	fields := secs[0].Fields
+	if len(fields) != 2 {
+		t.Fatalf("fields = %d, want 2: %+v", len(fields), fields)
+	}
+	if fields[0].Label != "当前余额" || fields[0].Value != "$66,908.23" || fields[0].Delta != "+$108.23" {
+		t.Errorf("bad balance field: %+v", fields[0])
+	}
+	if fields[1].Label != "历史消耗" || fields[1].Value != "$58,721.14" || fields[1].Delta != "+$121.14" {
+		t.Errorf("bad used field: %+v", fields[1])
+	}
+}
+
 func TestBuildSectionsUsageTree(t *testing.T) {
 	gdb, err := db.Init(t.TempDir())
 	if err != nil {

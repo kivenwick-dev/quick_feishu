@@ -88,13 +88,13 @@ func fillRow(fields []HistoryField, get func(string) (interface{}, bool), prev m
 			continue
 		}
 		cur[f.Path] = v
-		row.Values[f.Path] = formatVal(v)
+		row.Values[f.Path] = formatFieldVal(f.Path, v)
 		if prev != nil {
 			if pv, ok := prev[f.Path]; ok {
 				ln, lok := toFloat(v)
 				pn, pok := toFloat(pv)
 				if lok && pok {
-					row.Deltas[f.Path] = signedNum(ln - pn)
+					row.Deltas[f.Path] = signedFieldNum(f.Path, ln-pn)
 				}
 			}
 		}
@@ -124,7 +124,7 @@ func BuildAccountHistory(gdb *gorm.DB, limit int) *History {
 	for _, s := range snaps {
 		snap := s
 		row, cur := fillRow(fields, func(path string) (interface{}, bool) {
-			return extractField(snap.AccountRaw, path)
+			return snapshotAccountField(&snap, path)
 		}, prev)
 		row.ID = s.ID
 		row.Date = s.SnapshotDate

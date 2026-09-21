@@ -4,9 +4,30 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"quick-feishu/internal/model"
 )
+
+const quotaPerUSD = 500000.0
+
+func isUSDField(path string) bool {
+	return path == "balance_usd" || path == "used_usd"
+}
+
+func snapshotAccountField(s *model.Snapshot, path string) (interface{}, bool) {
+	if s == nil {
+		return nil, false
+	}
+	switch path {
+	case "balance_usd":
+		return float64(s.AccountQuota) / quotaPerUSD, true
+	case "used_usd":
+		return float64(s.AccountUsed) / quotaPerUSD, true
+	default:
+		return extractField(s.AccountRaw, path)
+	}
+}
 
 // extractField 从原始 JSON 中提取字段值（支持嵌套 . 路径）
 func extractField(raw []byte, path string) (interface{}, bool) {
@@ -59,15 +80,15 @@ func ComputeDiffAccount(early, late *model.Snapshot, f Field, label string) (Dif
 	if late == nil {
 		return res, fmt.Errorf("no late snapshot")
 	}
-	lateVal, ok := extractField(late.AccountRaw, f.Field)
+	lateVal, ok := snapshotAccountField(late, f.Field)
 	if !ok {
 		return res, fmt.Errorf("field %s not found", f.Field)
 	}
 	var earlyVal interface{}
 	if early != nil {
-		earlyVal, _ = extractField(early.AccountRaw, f.Field)
+		earlyVal, _ = snapshotAccountField(early, f.Field)
 	}
-	return DiffValue(label, lateVal, earlyVal, f.Diff), nil
+	return DiffFieldValue(f.Field, label, lateVal, earlyVal, f.Diff), nil
 }
 
 // DiffValue 通用取值+差值：Value 始终为晚值；wantDiff 且两值均可转数值时计算带符号 Delta。
@@ -85,12 +106,42 @@ func DiffValue(label string, lateVal, earlyVal interface{}, wantDiff bool) DiffR
 	return res
 }
 
+func DiffFieldValue(field, label string, lateVal, earlyVal interface{}, wantDiff bool) DiffResult {
+	if !isUSDField(field) {
+		return DiffValue(label, lateVal, earlyVal, wantDiff)
+	}
+	res := DiffResult{Label: label, Value: formatFieldVal(field, lateVal)}
+	if !wantDiff {
+		return res
+	}
+	ln, lok := toFloat(lateVal)
+	en, eok := toFloat(earlyVal)
+	if lok && eok {
+		res.Delta = signedFieldNum(field, ln-en)
+		res.IsDiff = true
+	}
+	return res
+}
+
 // signedNum 带符号格式化：正数加 +，负数自带 -，0 显示 0
 func signedNum(f float64) string {
 	if f > 0 {
 		return "+" + formatNum(f)
 	}
 	return formatNum(f)
+}
+
+func signedFieldNum(field string, f float64) string {
+	if !isUSDField(field) {
+		return signedNum(f)
+	}
+	if f > 0 {
+		return "+" + formatUSD(f)
+	}
+	if f < 0 {
+		return "-" + formatUSD(-f)
+	}
+	return "$0.00"
 }
 
 func toFloat(v interface{}) (float64, bool) {
@@ -131,4 +182,36 @@ func formatVal(v interface{}) string {
 		b, _ := json.Marshal(v)
 		return string(b)
 	}
+}
+
+func formatFieldVal(field string, v interface{}) string {
+	if !isUSDField(field) {
+		return formatVal(v)
+	}
+	f, ok := toFloat(v)
+	if !ok {
+		return "-"
+	}
+	return formatUSD(f)
+}
+
+func formatUSD(f float64) string {
+	value := strconv.FormatFloat(f, 'f', 2, 64)
+	parts := strings.Split(value, ".")
+	whole := parts[0]
+	negative := strings.HasPrefix(whole, "-")
+	if negative {
+		whole = strings.TrimPrefix(whole, "-")
+	}
+	var chunks []string
+	for len(whole) > 3 {
+		chunks = append([]string{whole[len(whole)-3:]}, chunks...)
+		whole = whole[:len(whole)-3]
+	}
+	chunks = append([]string{whole}, chunks...)
+	prefix := "$"
+	if negative {
+		prefix = "-$"
+	}
+	return prefix + strings.Join(chunks, ",") + "." + parts[1]
 }

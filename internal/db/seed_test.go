@@ -67,6 +67,7 @@ func TestSeedDictsUpgradesExistingDictionary(t *testing.T) {
 	labels := DictLabels(gdb, "account")
 	for path, want := range map[string]string{
 		"username": "自定义用户名", "aff_code": "邀请码", "email": "邮箱",
+		"balance_usd": "当前余额", "used_usd": "历史消耗",
 		"bulk_topup_discount_disabled": "禁用批量充值折扣",
 	} {
 		if labels[path] != want {

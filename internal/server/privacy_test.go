@@ -122,7 +122,7 @@ func TestPublicHistoryDropsNonNumericMetrics(t *testing.T) {
 }
 
 func TestAllQuantitativeMetricsRemainVisible(t *testing.T) {
-	fields := []string{"quota", "used_quota", "request_count", "aff_count", "aff_quota", "aff_history_quota", "top_up_rebate_count", "withdrawn_quota", "invoice_returned_quota", "support_ticket_cap"}
+	fields := []string{"quota", "used_quota", "balance_usd", "used_usd", "request_count", "aff_count", "aff_quota", "aff_history_quota", "top_up_rebate_count", "withdrawn_quota", "invoice_returned_quota", "support_ticket_cap"}
 	history := &report.History{Source: "account", Rows: []report.HistoryRow{{Values: map[string]string{}, Deltas: map[string]string{}}}}
 	for _, field := range fields {
 		history.Fields = append(history.Fields, report.HistoryField{Path: field})

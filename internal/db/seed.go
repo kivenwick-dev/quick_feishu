@@ -20,6 +20,8 @@ var accountSeeds = []dictSeed{
 	{"status", "int", "状态", "1=启用"},
 	{"quota", "int", "总配额", ""},
 	{"used_quota", "int", "已用配额", ""},
+	{"balance_usd", "float", "当前余额", "当前额度按 500,000 quota = $1.00 USD 换算"},
+	{"used_usd", "float", "历史消耗", "累计已用额度按 500,000 quota = $1.00 USD 换算"},
 	{"request_count", "int", "请求次数", ""},
 	{"group_id", "int", "分组ID", ""},
 	{"group", "string", "分组名", ""},

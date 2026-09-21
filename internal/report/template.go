@@ -44,6 +44,8 @@ func DefaultTemplate() *Template {
 				Name:   "账号概况",
 				Source: "account",
 				Fields: []Field{
+					{Field: "balance_usd", Diff: true},
+					{Field: "used_usd", Diff: true},
 					{Field: "used_quota", Diff: true},
 					{Field: "request_count", Diff: true},
 				},

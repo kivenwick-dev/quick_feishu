@@ -15,7 +15,7 @@ import (
 func publicMetricFields(source string) []string {
 	switch source {
 	case "account":
-		return []string{"quota", "used_quota", "request_count", "aff_count", "aff_quota", "aff_history_quota", "top_up_rebate_count", "withdrawn_quota", "invoice_returned_quota", "support_ticket_cap"}
+		return []string{"quota", "used_quota", "balance_usd", "used_usd", "request_count", "aff_count", "aff_quota", "aff_history_quota", "top_up_rebate_count", "withdrawn_quota", "invoice_returned_quota", "support_ticket_cap"}
 	case "usage", "token":
 		return []string{"total_available", "total_granted", "total_used", "used_quota", "remain_quota"}
 	}

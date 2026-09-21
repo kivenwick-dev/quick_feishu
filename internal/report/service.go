@@ -60,15 +60,15 @@ func BuildSections(gdb *gorm.DB, latest, prev *model.Snapshot, tmpl *Template) [
 				if f.Field == "" {
 					continue
 				}
-				lateVal, ok := extractField(latest.AccountRaw, f.Field)
+				lateVal, ok := snapshotAccountField(latest, f.Field)
 				if !ok {
 					continue
 				}
 				var earlyVal interface{}
 				if prev != nil {
-					earlyVal, _ = extractField(prev.AccountRaw, f.Field)
+					earlyVal, _ = snapshotAccountField(prev, f.Field)
 				}
-				s.Fields = append(s.Fields, DiffValue(labelOf(accountLabels, f.Field), lateVal, earlyVal, f.Diff))
+				s.Fields = append(s.Fields, DiffFieldValue(f.Field, labelOf(accountLabels, f.Field), lateVal, earlyVal, f.Diff))
 			}
 			if len(s.Fields) > 0 {
 				sections = append(sections, s)
