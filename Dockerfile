@@ -13,11 +13,13 @@ RUN mkdir -p internal/server/web && cd frontend && npm run build
 FROM golang:1.26.4-alpine AS backend-builder
 WORKDIR /src
 
+ARG ALPINE_MIRROR=https://mirrors.aliyun.com/alpine
 ARG GOPROXY=https://goproxy.cn,direct
 ARG GOSUMDB=sum.golang.google.cn
 ENV GOPROXY=${GOPROXY} \
     GOSUMDB=${GOSUMDB}
 
+RUN sed -i "s#https://dl-cdn.alpinelinux.org/alpine#${ALPINE_MIRROR}#g" /etc/apk/repositories
 RUN apk add --no-cache ca-certificates
 
 COPY go.mod go.sum ./
@@ -31,6 +33,8 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 
 FROM alpine:3.22 AS runtime
 
+ARG ALPINE_MIRROR=https://mirrors.aliyun.com/alpine
+RUN sed -i "s#https://dl-cdn.alpinelinux.org/alpine#${ALPINE_MIRROR}#g" /etc/apk/repositories
 RUN apk add --no-cache ca-certificates tzdata \
     && addgroup -S -g 10001 quickfeishu \
     && adduser -S -D -H -u 10001 -G quickfeishu quickfeishu \
