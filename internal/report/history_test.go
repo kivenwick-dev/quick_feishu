@@ -93,6 +93,56 @@ func TestBuildUsageHistory(t *testing.T) {
 	}
 }
 
+func TestBuildAccountHistoryCurrencyDeltasUsePreviousDaySnapshot(t *testing.T) {
+	gdb, err := db.Init(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SeedDicts(gdb); err != nil {
+		t.Fatal(err)
+	}
+	snaps := []model.Snapshot{
+		{
+			SnapshotDate: "2026-09-20",
+			CreatedAt:    time.Date(2026, 9, 20, 0, 0, 0, 0, time.FixedZone("CST", 8*3600)),
+			AccountQuota: 100000000,
+			AccountUsed:  50000000,
+			AccountRaw:   mustJSON(t, map[string]interface{}{"used_quota": 50000000}),
+		},
+		{
+			SnapshotDate: "2026-09-21",
+			CreatedAt:    time.Date(2026, 9, 21, 0, 0, 0, 0, time.FixedZone("CST", 8*3600)),
+			AccountQuota: 120000000,
+			AccountUsed:  70000000,
+			AccountRaw:   mustJSON(t, map[string]interface{}{"used_quota": 70000000}),
+		},
+		{
+			SnapshotDate: "2026-09-21",
+			CreatedAt:    time.Date(2026, 9, 21, 11, 6, 0, 0, time.FixedZone("CST", 8*3600)),
+			AccountQuota: 130000000,
+			AccountUsed:  80000000,
+			AccountRaw:   mustJSON(t, map[string]interface{}{"used_quota": 80000000}),
+		},
+	}
+	for _, snap := range snaps {
+		if err := gdb.Create(&snap).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	h := BuildAccountHistory(gdb, 0)
+	last := h.Rows[len(h.Rows)-1]
+	if last.Values["balance_usd"] != "$260.00" || last.Values["used_usd"] != "$160.00" {
+		t.Fatalf("bad currency values: %+v", last.Values)
+	}
+	if last.Deltas["balance_usd"] != "+$60.00" || last.Deltas["used_usd"] != "+$60.00" {
+		t.Fatalf("currency deltas should compare with previous day snapshot: %+v", last.Deltas)
+	}
+	if last.Deltas["used_quota"] != "+10000000" {
+		t.Fatalf("regular fields should still compare adjacent captures: %+v", last.Deltas)
+	}
+}
+
 func TestSameDayHistoryKeepsCaptureTimesAndDeltas(t *testing.T) {
 	gdb, err := db.Init(t.TempDir())
 	if err != nil {

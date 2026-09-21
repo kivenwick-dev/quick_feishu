@@ -202,14 +202,16 @@ func TestRestartSameUserKeepsDatabase(t *testing.T) {
 	}
 }
 
-func TestRunReportCollectsCurrentSnapshotBeforeSending(t *testing.T) {
+func TestRunReportUsesLiveCurrencyValuesButSnapshotDeltas(t *testing.T) {
 	clearCredentialEnv(t)
 	var webhookBody string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/api/user/self":
-			_, _ = w.Write([]byte(`{"data":{"id":827947,"quota":200,"used_quota":100,"request_count":9},"success":true}`))
+			_, _ = w.Write([]byte(`{"data":{"id":827947,"quota":200000000,"used_quota":120000000,"request_count":99},"success":true}`))
+		case "/api/status":
+			_, _ = w.Write([]byte(`{"data":{"quota_per_unit":500000,"display_in_currency":true},"success":true}`))
 		case "/api/token/":
 			_, _ = w.Write([]byte(`{"data":{"page":1,"page_size":100,"total":0,"items":[]},"success":true}`))
 		case "/hook":
@@ -235,6 +237,8 @@ func TestRunReportCollectsCurrentSnapshotBeforeSending(t *testing.T) {
 				"source":  "account",
 				"fields": []interface{}{
 					map[string]interface{}{"field": "used_quota", "diff": true},
+					map[string]interface{}{"field": "balance_usd", "diff": true},
+					map[string]interface{}{"field": "used_usd", "diff": true},
 				},
 			},
 		},
@@ -246,7 +250,20 @@ func TestRunReportCollectsCurrentSnapshotBeforeSending(t *testing.T) {
 	if err := db.SeedDicts(a.DB()); err != nil {
 		t.Fatal(err)
 	}
-	if err := a.DB().Create(&model.Snapshot{SnapshotDate: "2026-09-20", AccountUsed: 50, AccountRaw: mustReportJSON(t, map[string]interface{}{"used_quota": float64(50)})}).Error; err != nil {
+	if err := a.DB().Create(&model.Snapshot{
+		SnapshotDate: "2026-09-20",
+		AccountQuota: 90000000,
+		AccountUsed:  50000000,
+		AccountRaw:   mustReportJSON(t, map[string]interface{}{"used_quota": float64(50000000)}),
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := a.DB().Create(&model.Snapshot{
+		SnapshotDate: "2026-09-21",
+		AccountQuota: 100000000,
+		AccountUsed:  80000000,
+		AccountRaw:   mustReportJSON(t, map[string]interface{}{"used_quota": float64(80000000)}),
+	}).Error; err != nil {
 		t.Fatal(err)
 	}
 
@@ -256,17 +273,23 @@ func TestRunReportCollectsCurrentSnapshotBeforeSending(t *testing.T) {
 	var count int64
 	a.DB().Model(&model.Snapshot{}).Count(&count)
 	if count != 2 {
-		t.Fatalf("snapshots = %d, want 2", count)
+		t.Fatalf("RunReport must not create a reporting-time snapshot, snapshots = %d", count)
 	}
 	latest, err := db.LatestSnapshot(a.DB())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if latest.AccountUsed != 100 {
-		t.Fatalf("latest snapshot used = %d, want 100", latest.AccountUsed)
+	if latest.AccountUsed != 80000000 {
+		t.Fatalf("latest snapshot used = %d, want 80000000", latest.AccountUsed)
 	}
-	if !strings.Contains(webhookBody, "已用配额") || !strings.Contains(webhookBody, "+50") {
-		t.Fatalf("report did not use current-vs-previous snapshot diff: %s", webhookBody)
+	for _, want := range []string{
+		"已用配额", "80000000", "+30000000",
+		"当前余额", "$400.00", "+$20.00",
+		"历史消耗", "$240.00", "+$60.00",
+	} {
+		if !strings.Contains(webhookBody, want) {
+			t.Fatalf("report missing %q in body: %s", want, webhookBody)
+		}
 	}
 }
 

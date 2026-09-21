@@ -126,6 +126,7 @@ func BuildAccountHistory(gdb *gorm.DB, limit int) *History {
 		row, cur := fillRow(fields, func(path string) (interface{}, bool) {
 			return snapshotAccountField(&snap, path)
 		}, prev)
+		applyAccountDailyDeltas(gdb, &snap, fields, &row)
 		row.ID = s.ID
 		row.Date = s.SnapshotDate
 		row.CapturedAt = s.CreatedAt
@@ -133,6 +134,43 @@ func BuildAccountHistory(gdb *gorm.DB, limit int) *History {
 		h.Rows = append(h.Rows, row)
 	}
 	return h
+}
+
+func applyAccountDailyDeltas(gdb *gorm.DB, snap *model.Snapshot, fields []HistoryField, row *HistoryRow) {
+	prev := previousDailySnapshot(gdb, snap.SnapshotDate)
+	if prev == nil {
+		return
+	}
+	for _, f := range fields {
+		if !isUSDField(f.Path) {
+			continue
+		}
+		lateVal, ok := snapshotAccountField(snap, f.Path)
+		if !ok {
+			continue
+		}
+		earlyVal, ok := snapshotAccountField(prev, f.Path)
+		if !ok {
+			continue
+		}
+		ln, lok := toFloat(lateVal)
+		en, eok := toFloat(earlyVal)
+		if lok && eok {
+			row.Deltas[f.Path] = signedFieldNum(f.Path, ln-en)
+		}
+	}
+}
+
+func previousDailySnapshot(gdb *gorm.DB, date string) *model.Snapshot {
+	d, err := time.Parse("2006-01-02", date)
+	if err != nil {
+		return nil
+	}
+	prev, err := db.SnapshotBefore(gdb, d.AddDate(0, 0, -1).Format("2006-01-02"))
+	if err != nil {
+		return nil
+	}
+	return prev
 }
 
 // BuildUsageHistory 构建指定令牌的使用情况每日指标矩阵

@@ -107,14 +107,18 @@ func DiffValue(label string, lateVal, earlyVal interface{}, wantDiff bool) DiffR
 }
 
 func DiffFieldValue(field, label string, lateVal, earlyVal interface{}, wantDiff bool) DiffResult {
+	return DiffFieldDisplayValue(field, label, lateVal, lateVal, earlyVal, wantDiff)
+}
+
+func DiffFieldDisplayValue(field, label string, displayVal, lateDeltaVal, earlyVal interface{}, wantDiff bool) DiffResult {
 	if !isUSDField(field) {
-		return DiffValue(label, lateVal, earlyVal, wantDiff)
+		return DiffValue(label, displayVal, earlyVal, wantDiff)
 	}
-	res := DiffResult{Label: label, Value: formatFieldVal(field, lateVal)}
+	res := DiffResult{Label: label, Value: formatFieldVal(field, displayVal)}
 	if !wantDiff {
 		return res
 	}
-	ln, lok := toFloat(lateVal)
+	ln, lok := toFloat(lateDeltaVal)
 	en, eok := toFloat(earlyVal)
 	if lok && eok {
 		res.Delta = signedFieldNum(field, ln-en)

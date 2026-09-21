@@ -132,27 +132,37 @@ func (a *App) RunSnapshot() (*collector.Result, error) {
 	return res, nil
 }
 
-// RunReport 先采集当前快照，再与上一条快照对比生成并发送日报。
+// RunReport 取最近两日快照生成并发送日报。
+// 美元余额类字段的展示值使用发送时刻实时账号数据；差值仍使用快照对比。
 // 无快照时返回 (nil, error)；发送失败时返回 (log, error)。
 func (a *App) RunReport() (*model.SendLog, error) {
 	deps := a.reportDeps()
-	res := collector.Collect(deps.client)
-	if err := collector.SaveForAccount(deps.gdb, Today(), res, deps.client.UserID); err != nil {
-		return nil, err
-	}
 	latest, err := db.LatestSnapshot(deps.gdb)
 	if err != nil || latest == nil {
 		return nil, fmt.Errorf("no snapshots yet")
 	}
 	var prev *model.Snapshot
-	if p, e := db.PreviousSnapshot(deps.gdb, latest); e == nil {
+	if p, e := db.SnapshotBefore(deps.gdb, addDays(latest.SnapshotDate, -1)); e == nil {
 		prev = p
 	}
 	tmpl, _ := report.TemplateFromMap(deps.template)
 	if tmpl == nil {
 		tmpl = report.DefaultTemplate()
 	}
-	return report.ExecuteReport(deps.gdb, latest, prev, tmpl, deps.webhookURL, deps.retryTimes)
+	return report.ExecuteReportWithAccountOverrides(deps.gdb, latest, prev, tmpl, deps.webhookURL, deps.retryTimes, liveAccountOverrides(deps.client))
+}
+
+func liveAccountOverrides(client *api.Client) map[string]interface{} {
+	account, _, accountErr := client.GetAccount()
+	status, statusErr := client.GetStatus()
+	if accountErr != nil || statusErr != nil || account == nil || status == nil || status.QuotaPerUnit <= 0 {
+		return nil
+	}
+	rate := float64(status.QuotaPerUnit)
+	return map[string]interface{}{
+		"balance_usd": float64(account.Quota) / rate,
+		"used_usd":    float64(account.UsedQuota) / rate,
+	}
 }
 
 // Backfill 启动补采缺失的历史快照
@@ -288,4 +298,9 @@ func (a *App) startLocked() error {
 	sch.Start()
 	a.sched = sch
 	return nil
+}
+
+func addDays(date string, n int) string {
+	d, _ := time.Parse("2006-01-02", date)
+	return d.AddDate(0, 0, n).Format("2006-01-02")
 }

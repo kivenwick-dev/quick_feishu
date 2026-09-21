@@ -47,6 +47,12 @@ func extractTokenField(tok model.TokenSnapshot, path string) (interface{}, bool)
 
 // BuildSections 按模板将快照数据组装为分区结果（不涉及网络）。
 func BuildSections(gdb *gorm.DB, latest, prev *model.Snapshot, tmpl *Template) []SectionResult {
+	return BuildSectionsWithAccountOverrides(gdb, latest, prev, tmpl, nil)
+}
+
+// BuildSectionsWithAccountOverrides 按模板组装分区结果，可对账号展示值做运行时覆盖。
+// 覆盖值只影响字段展示；差值仍使用 latest 与 prev 快照计算。
+func BuildSectionsWithAccountOverrides(gdb *gorm.DB, latest, prev *model.Snapshot, tmpl *Template, accountOverrides map[string]interface{}) []SectionResult {
 	accountLabels := db.DictLabels(gdb, "account")
 	usageLabels := db.DictLabels(gdb, "usage")
 	tokenLabels := db.DictLabels(gdb, "token")
@@ -64,11 +70,17 @@ func BuildSections(gdb *gorm.DB, latest, prev *model.Snapshot, tmpl *Template) [
 				if !ok {
 					continue
 				}
+				displayVal := lateVal
+				if isUSDField(f.Field) && accountOverrides != nil {
+					if override, ok := accountOverrides[f.Field]; ok {
+						displayVal = override
+					}
+				}
 				var earlyVal interface{}
 				if prev != nil {
 					earlyVal, _ = snapshotAccountField(prev, f.Field)
 				}
-				s.Fields = append(s.Fields, DiffFieldValue(f.Field, labelOf(accountLabels, f.Field), lateVal, earlyVal, f.Diff))
+				s.Fields = append(s.Fields, DiffFieldDisplayValue(f.Field, labelOf(accountLabels, f.Field), displayVal, lateVal, earlyVal, f.Diff))
 			}
 			if len(s.Fields) > 0 {
 				sections = append(sections, s)
@@ -131,10 +143,14 @@ func BuildSections(gdb *gorm.DB, latest, prev *model.Snapshot, tmpl *Template) [
 // ExecuteReport 取最新两日快照，按模板计算差值生成卡片，推送到飞书并记录日志。
 // 返回发送日志（无论成败），供调用方展示。
 func ExecuteReport(gdb *gorm.DB, latest, prev *model.Snapshot, tmpl *Template, webhookURL string, retryTimes int) (*model.SendLog, error) {
+	return ExecuteReportWithAccountOverrides(gdb, latest, prev, tmpl, webhookURL, retryTimes, nil)
+}
+
+func ExecuteReportWithAccountOverrides(gdb *gorm.DB, latest, prev *model.Snapshot, tmpl *Template, webhookURL string, retryTimes int, accountOverrides map[string]interface{}) (*model.SendLog, error) {
 	if latest == nil {
 		return nil, fmt.Errorf("no snapshots yet")
 	}
-	sections := BuildSections(gdb, latest, prev, tmpl)
+	sections := BuildSectionsWithAccountOverrides(gdb, latest, prev, tmpl, accountOverrides)
 	card, err := BuildCard(tmpl, latest.SnapshotDate, sections)
 	if err != nil {
 		return nil, err
