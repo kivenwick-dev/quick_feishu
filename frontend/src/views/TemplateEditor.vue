@@ -16,6 +16,16 @@
             <el-radio value="manual">手动</el-radio>
           </el-radio-group>
         </el-form-item>
+        <el-form-item label="算法说明">
+          <el-input
+            v-model="tmpl.algorithm_note"
+            type="textarea"
+            :rows="3"
+            placeholder="留空则日报不展示算法说明"
+            style="max-width: 720px"
+          />
+          <div class="form-hint">展示在日报顶部，可自定义；清空并保存则不显示。</div>
+        </el-form-item>
       </el-form>
     </div>
 
@@ -92,7 +102,8 @@ import { onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import api from '../api'
 
-const tmpl = ref<any>({ title: 'AI 平台日报', date_mode: 'auto', sections: [] })
+const defaultAlgorithmNote = '主值：日报发送时实时采集值；差值：两个 00:00 快照对比。\n余额/可用类 = 前天快照 - 昨天快照，显示为「消耗」；累计/已用/授予类 = 昨天快照 - 前天快照，显示为「变动」。'
+const tmpl = ref<any>({ title: 'AI 平台日报', date_mode: 'auto', algorithm_note: defaultAlgorithmNote, sections: [] })
 const dicts = ref<Record<string, any[]>>({ account: [], token: [], usage: [] })
 
 function dictFor(source: string) {
@@ -127,6 +138,9 @@ async function load() {
   const res = await api.getTemplate()
   if (res.data && res.data.title !== undefined) {
     tmpl.value = res.data
+  }
+  if (tmpl.value.algorithm_note === undefined || tmpl.value.algorithm_note === null) {
+    tmpl.value.algorithm_note = defaultAlgorithmNote
   }
   if (!tmpl.value.sections) tmpl.value.sections = []
   normalizeTemplate()
@@ -175,6 +189,14 @@ async function save() {
 
 .base-form :deep(.el-form-item) {
   margin-bottom: 16px;
+}
+
+.form-hint {
+  width: 100%;
+  margin-top: 6px;
+  color: var(--el-text-color-secondary, #909399);
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 /* 树 */

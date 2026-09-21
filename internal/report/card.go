@@ -139,12 +139,8 @@ func hasContent(sec SectionResult) bool {
 	return len(sec.Fields) > 0 || len(sec.Tokens) > 0
 }
 
-func algorithmContent() string {
-	return strings.Join([]string{
-		"**算法说明**",
-		"主值：日报发送时实时采集值；差值：两个 00:00 快照对比。",
-		"余额/可用类 = 前天快照 - 昨天快照，显示为「消耗」；累计/已用/授予类 = 昨天快照 - 前天快照，显示为「变动」。",
-	}, "\n")
+func algorithmContent(note string) string {
+	return "**算法说明**\n" + note
 }
 
 // BuildCard 根据模板与分区结果生成卡片
@@ -160,10 +156,12 @@ func BuildCard(tmpl *Template, date string, sections []SectionResult) (*Card, er
 			Elements: []interface{}{},
 		},
 	}
-	card.Card.Elements = append(card.Card.Elements, DivText{
-		Tag:  "div",
-		Text: CardText{Tag: "lark_md", Content: algorithmContent()},
-	})
+	if note := strings.TrimSpace(tmpl.AlgorithmNoteText()); note != "" {
+		card.Card.Elements = append(card.Card.Elements, DivText{
+			Tag:  "div",
+			Text: CardText{Tag: "lark_md", Content: algorithmContent(note)},
+		})
+	}
 	first := true
 	for _, sec := range sections {
 		if !hasContent(sec) {

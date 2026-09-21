@@ -8,6 +8,7 @@ title: 测试日报
 date_mode: manual
 start_date: "2026-09-17"
 end_date: "2026-09-18"
+algorithm_note: 自定义算法
 sections:
   - section: 概况
     source: account
@@ -28,6 +29,9 @@ sections:
 	if !tmpl.Sections[0].Fields[0].Diff {
 		t.Error("diff should be true")
 	}
+	if tmpl.AlgorithmNote == nil || *tmpl.AlgorithmNote != "自定义算法" {
+		t.Errorf("algorithm_note not parsed: %+v", tmpl.AlgorithmNote)
+	}
 }
 
 func TestParseTemplateDefaultsDateMode(t *testing.T) {
@@ -44,6 +48,9 @@ func TestDefaultTemplate(t *testing.T) {
 	tmpl := DefaultTemplate()
 	if tmpl.DateMode != "auto" {
 		t.Errorf("default should be auto")
+	}
+	if tmpl.AlgorithmNoteText() != DefaultAlgorithmNote() {
+		t.Errorf("default algorithm note mismatch")
 	}
 	if len(tmpl.Sections) != 2 {
 		t.Errorf("default sections = %d, want 2", len(tmpl.Sections))

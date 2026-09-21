@@ -48,10 +48,38 @@ func TestBuildCard(t *testing.T) {
 		t.Error("json msg_type missing")
 	}
 	s := string(b)
-	for _, want := range []string{"账号概况", "各令牌用量", "已用配额", "50"} {
+	for _, want := range []string{"算法说明", "账号概况", "各令牌用量", "已用配额", "50"} {
 		if !strings.Contains(s, want) {
 			t.Errorf("card json missing %q: %s", want, s)
 		}
+	}
+}
+
+func TestBuildCardUsesCustomAlgorithmNote(t *testing.T) {
+	note := "自定义说明"
+	tmpl := &Template{Title: "日报", AlgorithmNote: &note}
+	card, err := BuildCard(tmpl, "2026-09-18", []SectionResult{
+		{Name: "有效", Fields: []DiffResult{{Field: "total_used", Label: "累计已用", Value: "1"}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := card.ToJSON()
+	if !strings.Contains(string(b), "自定义说明") {
+		t.Fatalf("missing custom algorithm note: %s", string(b))
+	}
+
+	blank := ""
+	tmpl.AlgorithmNote = &blank
+	card, err = BuildCard(tmpl, "2026-09-18", []SectionResult{
+		{Name: "有效", Fields: []DiffResult{{Field: "total_used", Label: "累计已用", Value: "1"}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ = card.ToJSON()
+	if strings.Contains(string(b), "算法说明") {
+		t.Fatalf("blank algorithm note should hide explanation: %s", string(b))
 	}
 }
 

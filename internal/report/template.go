@@ -5,11 +5,12 @@ import (
 )
 
 type Template struct {
-	Title     string    `yaml:"title" json:"title"`
-	DateMode  string    `yaml:"date_mode" json:"date_mode"` // auto | manual
-	StartDate string    `yaml:"start_date,omitempty" json:"start_date,omitempty"`
-	EndDate   string    `yaml:"end_date,omitempty" json:"end_date,omitempty"`
-	Sections  []Section `yaml:"sections" json:"sections"`
+	Title         string    `yaml:"title" json:"title"`
+	DateMode      string    `yaml:"date_mode" json:"date_mode"` // auto | manual
+	StartDate     string    `yaml:"start_date,omitempty" json:"start_date,omitempty"`
+	EndDate       string    `yaml:"end_date,omitempty" json:"end_date,omitempty"`
+	AlgorithmNote *string   `yaml:"algorithm_note,omitempty" json:"algorithm_note,omitempty"`
+	Sections      []Section `yaml:"sections" json:"sections"`
 }
 
 type Section struct {
@@ -26,6 +27,21 @@ type Field struct {
 }
 
 func boolPtr(v bool) *bool { return &v }
+
+func stringPtr(v string) *string { return &v }
+
+const defaultAlgorithmNote = "主值：日报发送时实时采集值；差值：两个 00:00 快照对比。\n余额/可用类 = 前天快照 - 昨天快照，显示为「消耗」；累计/已用/授予类 = 昨天快照 - 前天快照，显示为「变动」。"
+
+func DefaultAlgorithmNote() string {
+	return defaultAlgorithmNote
+}
+
+func (t *Template) AlgorithmNoteText() string {
+	if t == nil || t.AlgorithmNote == nil {
+		return defaultAlgorithmNote
+	}
+	return *t.AlgorithmNote
+}
 
 func currencyEligible(field string) bool {
 	return field == "balance_usd" || field == "used_usd" ||
@@ -52,8 +68,9 @@ func ParseTemplate(data []byte) (*Template, error) {
 
 func DefaultTemplate() *Template {
 	return &Template{
-		Title:    "AI 平台日报",
-		DateMode: "auto",
+		Title:         "AI 平台日报",
+		DateMode:      "auto",
+		AlgorithmNote: stringPtr(defaultAlgorithmNote),
 		Sections: []Section{
 			{
 				Name:   "账号概况",
