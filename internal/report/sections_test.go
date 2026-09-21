@@ -83,8 +83,8 @@ func TestBuildSectionsAccountDerivedUSDFields(t *testing.T) {
 
 	tmpl := &Template{Sections: []Section{
 		{Name: "美元账务", Source: "account", Fields: []Field{
-			{Field: "balance_usd", Diff: true},
-			{Field: "used_usd", Diff: true},
+			{Field: "balance_usd", Diff: true, Currency: boolPtr(true)},
+			{Field: "used_usd", Diff: true, Currency: boolPtr(true)},
 		}},
 	}}
 	secs := BuildSections(gdb, latest, prev, tmpl)
@@ -100,6 +100,14 @@ func TestBuildSectionsAccountDerivedUSDFields(t *testing.T) {
 	}
 	if fields[1].Label != "历史消耗" || fields[1].Value != "$58,721.14" || fields[1].Delta != "+$121.14" {
 		t.Errorf("bad used field: %+v", fields[1])
+	}
+
+	off := false
+	tmpl.Sections[0].Fields = []Field{{Field: "balance_usd", Diff: true, Currency: &off}}
+	secs = BuildSections(gdb, latest, prev, tmpl)
+	got := secs[0].Fields[0]
+	if got.Value != "33454114092" || got.Delta != "+54114092" {
+		t.Errorf("currency disabled should render quota, got %+v", got)
 	}
 }
 
@@ -179,6 +187,42 @@ func TestBuildSectionsUsageDiff(t *testing.T) {
 	m := secs[0].Tokens[0].Metrics[0]
 	if m.Label != "累计已用" || m.Value != "30" || !m.HasDelta || m.Delta != "+20" {
 		t.Errorf("expected today=30 delta=+20, got %+v", m)
+	}
+}
+
+func TestBuildSectionsUsageCurrencySwitch(t *testing.T) {
+	gdb, err := db.Init(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.SeedDicts(gdb)
+
+	prev := &model.Snapshot{SnapshotDate: "2026-09-17", AccountRaw: mustJSON(t, map[string]interface{}{})}
+	latest := &model.Snapshot{SnapshotDate: "2026-09-18", AccountRaw: mustJSON(t, map[string]interface{}{})}
+	gdb.Create(prev)
+	gdb.Create(latest)
+	gdb.Create(&model.TokenSnapshot{SnapshotID: prev.ID, TokenID: 1, TokenName: "claude",
+		UsageRaw: mustJSON(t, map[string]interface{}{"total_used": float64(500000)})})
+	gdb.Create(&model.TokenSnapshot{SnapshotID: latest.ID, TokenID: 1, TokenName: "claude",
+		UsageRaw: mustJSON(t, map[string]interface{}{"total_used": float64(1000000)})})
+
+	on := true
+	off := false
+	tmpl := &Template{Sections: []Section{
+		{Name: "用量", Source: "usage", PerToken: true, Fields: []Field{{Field: "total_used", Diff: true, Currency: &on}}},
+	}}
+	overrides := map[int]map[string]interface{}{1: map[string]interface{}{"total_used": int64(1500000)}}
+	secs := BuildSectionsWithOverrides(gdb, latest, prev, tmpl, nil, overrides, 500000)
+	got := secs[0].Tokens[0].Metrics[0]
+	if got.Value != "$3.00" || got.Delta != "+$1.00" {
+		t.Errorf("currency enabled bad metric: %+v", got)
+	}
+
+	tmpl.Sections[0].Fields[0].Currency = &off
+	secs = BuildSectionsWithOverrides(gdb, latest, prev, tmpl, nil, overrides, 500000)
+	got = secs[0].Tokens[0].Metrics[0]
+	if got.Value != "1500000" || got.Delta != "+500000" {
+		t.Errorf("currency disabled bad metric: %+v", got)
 	}
 }
 

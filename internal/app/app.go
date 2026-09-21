@@ -159,10 +159,9 @@ func liveReportOverrides(client *api.Client) (map[string]interface{}, map[int]ma
 	if accountErr != nil || statusErr != nil || account == nil || status == nil || status.QuotaPerUnit <= 0 {
 		return nil, nil, 0
 	}
-	rate := float64(status.QuotaPerUnit)
 	accountOverrides := map[string]interface{}{
-		"balance_usd": float64(account.Quota) / rate,
-		"used_usd":    float64(account.UsedQuota) / rate,
+		"balance_usd": account.Quota,
+		"used_usd":    account.UsedQuota,
 	}
 	tokenOverrides := liveTokenOverrides(client)
 	return accountOverrides, tokenOverrides, status.QuotaPerUnit

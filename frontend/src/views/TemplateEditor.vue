@@ -28,7 +28,7 @@
             placeholder="分区标题，如：账号概况"
             class="sec-title"
           />
-          <el-select v-model="sec.source" class="sec-source" placeholder="数据来源">
+          <el-select v-model="sec.source" class="sec-source" placeholder="数据来源" @change="onSourceChange(sec)">
             <el-option value="account" label="账号信息" />
             <el-option value="usage" label="令牌使用情况" />
           </el-select>
@@ -48,6 +48,7 @@
               filterable
               placeholder="选择字段"
               class="field-select"
+              @change="normalizeField(sec.source, f)"
             >
               <el-option
                 v-for="opt in dictFor(sec.source)"
@@ -57,6 +58,11 @@
               />
             </el-select>
             <el-switch v-model="f.diff" active-text="差值" />
+            <el-switch
+              v-if="currencyEligible(sec.source, f.field)"
+              v-model="f.currency"
+              active-text="金额"
+            />
             <el-button class="field-del" link type="danger" @click="sec.fields.splice(Number(j), 1)">删除</el-button>
           </div>
           <div class="add-field-row">
@@ -93,12 +99,37 @@ function dictFor(source: string) {
   return dicts.value[source] || []
 }
 
+function currencyEligible(source: string, field: string) {
+  if (source === 'account') return field === 'balance_usd' || field === 'used_usd'
+  if (source === 'usage') return ['total_available', 'total_used', 'total_granted'].includes(field)
+  return false
+}
+
+function normalizeField(source: string, field: any) {
+  if (currencyEligible(source, field.field)) {
+    if (field.currency === undefined) field.currency = true
+    return
+  }
+  delete field.currency
+}
+
+function normalizeTemplate() {
+  for (const sec of tmpl.value.sections || []) {
+    for (const f of sec.fields || []) normalizeField(sec.source, f)
+  }
+}
+
+function onSourceChange(sec: any) {
+  for (const f of sec.fields || []) normalizeField(sec.source, f)
+}
+
 async function load() {
   const res = await api.getTemplate()
   if (res.data && res.data.title !== undefined) {
     tmpl.value = res.data
   }
   if (!tmpl.value.sections) tmpl.value.sections = []
+  normalizeTemplate()
   for (const s of ['account', 'token', 'usage']) {
     try {
       const d = await api.getDict(s)

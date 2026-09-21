@@ -25,9 +25,9 @@ func snapshotAccountField(s *model.Snapshot, path string) (interface{}, bool) {
 	}
 	switch path {
 	case "balance_usd":
-		return float64(s.AccountQuota) / quotaPerUSD, true
+		return s.AccountQuota, true
 	case "used_usd":
-		return float64(s.AccountUsed) / quotaPerUSD, true
+		return s.AccountUsed, true
 	default:
 		return extractField(s.AccountRaw, path)
 	}
@@ -92,16 +92,20 @@ func ComputeDiffAccount(early, late *model.Snapshot, f Field, label string) (Dif
 	if early != nil {
 		earlyVal, _ = snapshotAccountField(early, f.Field)
 	}
-	return DiffFieldValue(f.Field, label, lateVal, earlyVal, f.Diff), nil
+	return DiffFieldValue(f.Field, label, lateVal, earlyVal, f.Diff, f.CurrencyEnabled(), int64(quotaPerUSD)), nil
 }
 
 // DiffValue 通用取值+差值：Value 始终为晚值；wantDiff 且两值均可转数值时计算带符号 Delta。
 func DiffValue(label string, lateVal, earlyVal interface{}, wantDiff bool) DiffResult {
-	res := DiffResult{Label: label, Value: formatVal(lateVal)}
+	return DiffDisplayValue(label, lateVal, lateVal, earlyVal, wantDiff)
+}
+
+func DiffDisplayValue(label string, displayVal, lateDeltaVal, earlyVal interface{}, wantDiff bool) DiffResult {
+	res := DiffResult{Label: label, Value: formatVal(displayVal)}
 	if !wantDiff {
 		return res
 	}
-	ln, lok := toFloat(lateVal)
+	ln, lok := toFloat(lateDeltaVal)
 	en, eok := toFloat(earlyVal)
 	if lok && eok {
 		res.Delta = signedNum(ln - en)
@@ -110,30 +114,31 @@ func DiffValue(label string, lateVal, earlyVal interface{}, wantDiff bool) DiffR
 	return res
 }
 
-func DiffFieldValue(field, label string, lateVal, earlyVal interface{}, wantDiff bool) DiffResult {
-	return DiffFieldDisplayValue(field, label, lateVal, lateVal, earlyVal, wantDiff)
+func DiffFieldValue(field, label string, lateVal, earlyVal interface{}, wantDiff bool, currency bool, quotaPerUnit int64) DiffResult {
+	return DiffFieldDisplayValue(field, label, lateVal, lateVal, earlyVal, wantDiff, currency, quotaPerUnit)
 }
 
-func DiffFieldDisplayValue(field, label string, displayVal, lateDeltaVal, earlyVal interface{}, wantDiff bool) DiffResult {
-	if !isUSDField(field) {
-		return DiffValue(label, displayVal, earlyVal, wantDiff)
+func DiffFieldDisplayValue(field, label string, displayVal, lateDeltaVal, earlyVal interface{}, wantDiff bool, currency bool, quotaPerUnit int64) DiffResult {
+	if !isUSDField(field) || !currency || quotaPerUnit <= 0 {
+		return DiffDisplayValue(label, displayVal, lateDeltaVal, earlyVal, wantDiff)
 	}
-	res := DiffResult{Label: label, Value: formatFieldVal(field, displayVal)}
+	rate := float64(quotaPerUnit)
+	res := DiffResult{Label: label, Value: formatUSDValue(displayVal, rate)}
 	if !wantDiff {
 		return res
 	}
 	ln, lok := toFloat(lateDeltaVal)
 	en, eok := toFloat(earlyVal)
 	if lok && eok {
-		res.Delta = signedFieldNum(field, ln-en)
+		res.Delta = signedCurrencyDelta((ln - en) / rate)
 		res.IsDiff = true
 	}
 	return res
 }
 
-func DiffTokenUSDDisplayValue(field, label string, displayVal, lateQuotaVal, earlyQuotaVal interface{}, quotaPerUnit int64, wantDiff bool) DiffResult {
-	if !isTokenUSDField(field) || quotaPerUnit <= 0 {
-		return DiffValue(label, displayVal, earlyQuotaVal, wantDiff)
+func DiffTokenUSDDisplayValue(field, label string, displayVal, lateQuotaVal, earlyQuotaVal interface{}, quotaPerUnit int64, wantDiff bool, currency bool) DiffResult {
+	if !isTokenUSDField(field) || !currency || quotaPerUnit <= 0 {
+		return DiffDisplayValue(label, displayVal, lateQuotaVal, earlyQuotaVal, wantDiff)
 	}
 	rate := float64(quotaPerUnit)
 	res := DiffResult{Label: label, Value: formatUSDValue(displayVal, rate)}
@@ -143,7 +148,7 @@ func DiffTokenUSDDisplayValue(field, label string, displayVal, lateQuotaVal, ear
 	ln, lok := toFloat(lateQuotaVal)
 	en, eok := toFloat(earlyQuotaVal)
 	if lok && eok {
-		res.Delta = signedFieldNum("balance_usd", (ln-en)/rate)
+		res.Delta = signedCurrencyDelta((ln - en) / rate)
 		res.IsDiff = true
 	}
 	return res
@@ -161,6 +166,10 @@ func signedFieldNum(field string, f float64) string {
 	if !isUSDField(field) {
 		return signedNum(f)
 	}
+	return signedCurrencyDelta(f / quotaPerUSD)
+}
+
+func signedCurrencyDelta(f float64) string {
 	if f > 0 {
 		return "+" + formatUSD(f)
 	}
@@ -218,7 +227,7 @@ func formatFieldVal(field string, v interface{}) string {
 	if !ok {
 		return "-"
 	}
-	return formatUSD(f)
+	return formatUSD(f / quotaPerUSD)
 }
 
 func formatUSDValue(v interface{}, quotaPerUnit float64) string {

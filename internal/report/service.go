@@ -59,6 +59,9 @@ func BuildSectionsWithAccountOverrides(gdb *gorm.DB, latest, prev *model.Snapsho
 // BuildSectionsWithOverrides 按模板组装分区结果，可覆盖账号与令牌展示值。
 // 覆盖值只影响字段展示；差值仍使用 latest 与 prev 快照计算。
 func BuildSectionsWithOverrides(gdb *gorm.DB, latest, prev *model.Snapshot, tmpl *Template, accountOverrides map[string]interface{}, tokenOverrides map[int]map[string]interface{}, quotaPerUnit int64) []SectionResult {
+	if quotaPerUnit <= 0 {
+		quotaPerUnit = int64(quotaPerUSD)
+	}
 	accountLabels := db.DictLabels(gdb, "account")
 	usageLabels := db.DictLabels(gdb, "usage")
 	tokenLabels := db.DictLabels(gdb, "token")
@@ -86,7 +89,7 @@ func BuildSectionsWithOverrides(gdb *gorm.DB, latest, prev *model.Snapshot, tmpl
 				if prev != nil {
 					earlyVal, _ = snapshotAccountField(prev, f.Field)
 				}
-				s.Fields = append(s.Fields, DiffFieldDisplayValue(f.Field, labelOf(accountLabels, f.Field), displayVal, lateVal, earlyVal, f.Diff))
+				s.Fields = append(s.Fields, DiffFieldDisplayValue(f.Field, labelOf(accountLabels, f.Field), displayVal, lateVal, earlyVal, f.Diff, f.CurrencyEnabled(), quotaPerUnit))
 			}
 			if len(s.Fields) > 0 {
 				sections = append(sections, s)
@@ -136,7 +139,7 @@ func BuildSectionsWithOverrides(gdb *gorm.DB, latest, prev *model.Snapshot, tmpl
 					if usageLabels[f.Field] == "" {
 						label = labelOf(tokenLabels, f.Field)
 					}
-					res := DiffTokenUSDDisplayValue(f.Field, label, displayVal, lateVal, earlyVal, quotaPerUnit, f.Diff)
+					res := DiffTokenUSDDisplayValue(f.Field, label, displayVal, lateVal, earlyVal, quotaPerUnit, f.Diff, f.CurrencyEnabled())
 					node.Metrics = append(node.Metrics, Metric{
 						Label:    res.Label,
 						Value:    res.Value,

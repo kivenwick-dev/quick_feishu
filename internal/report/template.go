@@ -20,8 +20,23 @@ type Section struct {
 }
 
 type Field struct {
-	Field string `yaml:"field" json:"field"`
-	Diff  bool   `yaml:"diff" json:"diff"`
+	Field    string `yaml:"field" json:"field"`
+	Diff     bool   `yaml:"diff" json:"diff"`
+	Currency *bool  `yaml:"currency,omitempty" json:"currency,omitempty"`
+}
+
+func boolPtr(v bool) *bool { return &v }
+
+func currencyEligible(field string) bool {
+	return field == "balance_usd" || field == "used_usd" ||
+		field == "total_available" || field == "total_used" || field == "total_granted"
+}
+
+func (f Field) CurrencyEnabled() bool {
+	if !currencyEligible(f.Field) {
+		return false
+	}
+	return f.Currency != nil && *f.Currency
 }
 
 func ParseTemplate(data []byte) (*Template, error) {
@@ -44,8 +59,8 @@ func DefaultTemplate() *Template {
 				Name:   "账号概况",
 				Source: "account",
 				Fields: []Field{
-					{Field: "balance_usd", Diff: true},
-					{Field: "used_usd", Diff: true},
+					{Field: "balance_usd", Diff: true, Currency: boolPtr(true)},
+					{Field: "used_usd", Diff: true, Currency: boolPtr(true)},
 					{Field: "used_quota", Diff: true},
 					{Field: "request_count", Diff: true},
 				},
@@ -55,7 +70,7 @@ func DefaultTemplate() *Template {
 				Source:   "usage",
 				PerToken: true,
 				Fields: []Field{
-					{Field: "total_used", Diff: true},
+					{Field: "total_used", Diff: true, Currency: boolPtr(true)},
 				},
 			},
 		},

@@ -242,8 +242,8 @@ func TestRunReportUsesLiveCurrencyValuesButSnapshotDeltas(t *testing.T) {
 				"source":  "account",
 				"fields": []interface{}{
 					map[string]interface{}{"field": "used_quota", "diff": true},
-					map[string]interface{}{"field": "balance_usd", "diff": true},
-					map[string]interface{}{"field": "used_usd", "diff": true},
+					map[string]interface{}{"field": "balance_usd", "diff": true, "currency": true},
+					map[string]interface{}{"field": "used_usd", "diff": true, "currency": true},
 				},
 			},
 			map[string]interface{}{
@@ -251,9 +251,9 @@ func TestRunReportUsesLiveCurrencyValuesButSnapshotDeltas(t *testing.T) {
 				"source":    "usage",
 				"per_token": true,
 				"fields": []interface{}{
-					map[string]interface{}{"field": "total_available", "diff": true},
-					map[string]interface{}{"field": "total_used", "diff": true},
-					map[string]interface{}{"field": "total_granted", "diff": true},
+					map[string]interface{}{"field": "total_available", "diff": true, "currency": true},
+					map[string]interface{}{"field": "total_used", "diff": true, "currency": true},
+					map[string]interface{}{"field": "total_granted", "diff": true, "currency": true},
 				},
 			},
 		},
