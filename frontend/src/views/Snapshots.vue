@@ -44,8 +44,15 @@
           style="width: 300px"
           @change="rememberVisibleFields"
         >
-          <el-option v-for="f in allFields" :key="f.path" :value="f.path" :label="f.label || f.path" />
+          <el-option v-for="f in fieldOptions" :key="f.path" :value="f.path" :label="f.label || f.path" />
         </el-select>
+        <el-switch
+          v-if="source === 'usage'"
+          v-model="usageCurrency"
+          active-text="金额"
+          inactive-text="配额"
+          @change="saveUsageCurrency"
+        />
       </div>
     </el-card>
 
@@ -98,8 +105,8 @@ const allFields = ref<any[]>([])
 const visibleFields = ref<string[]>([])
 const fieldSelections = new Map<string, string[]>()
 const fieldSelectionsStorageKey = 'quick-feishu.snapshots.visible-fields'
-const currencyFieldMigrationStorageKey = 'quick-feishu.snapshots.currency-fields-migrated'
-const currencyFieldMigrations = new Set<string>()
+const usageCurrencyStorageKey = 'quick-feishu.snapshots.usage-currency'
+const usageCurrency = ref(true)
 const rows = ref<any[]>([])
 
 function restoreFieldSelections() {
@@ -113,13 +120,8 @@ function restoreFieldSelections() {
         fieldSelections.set(key, paths as string[])
       }
     }
-    const migrated = localStorage.getItem(currencyFieldMigrationStorageKey)
-    if (migrated !== null) {
-      const parsedMigrations = JSON.parse(migrated)
-      if (Array.isArray(parsedMigrations)) {
-        parsedMigrations.filter((key) => typeof key === 'string').forEach((key) => currencyFieldMigrations.add(key))
-      }
-    }
+    const savedCurrency = localStorage.getItem(usageCurrencyStorageKey)
+    if (savedCurrency !== null) usageCurrency.value = savedCurrency === 'true'
   } catch {
     // Ignore unavailable storage and malformed data; each source will default to all fields.
   }
@@ -128,9 +130,16 @@ function restoreFieldSelections() {
 function saveFieldSelections() {
   try {
     localStorage.setItem(fieldSelectionsStorageKey, JSON.stringify(Object.fromEntries(fieldSelections)))
-    localStorage.setItem(currencyFieldMigrationStorageKey, JSON.stringify([...currencyFieldMigrations]))
   } catch {
     // Browsers may disable local storage; filtering still works for the current visit.
+  }
+}
+
+function saveUsageCurrency() {
+  try {
+    localStorage.setItem(usageCurrencyStorageKey, String(usageCurrency.value))
+  } catch {
+    // Browsers may disable local storage; the switch still works for the current visit.
   }
 }
 
@@ -140,9 +149,36 @@ const range = ref<string[] | null>(null)
 const page = ref(1)
 const pageSize = ref(6)
 
+function selectablePath(path: string) {
+  return !path.endsWith('_usd')
+}
+
+function currencyPath(path: string) {
+  switch (path) {
+    case 'total_available':
+      return 'total_available_usd'
+    case 'total_used':
+      return 'total_used_usd'
+    case 'total_granted':
+      return 'total_granted_usd'
+    default:
+      return path
+  }
+}
+
+const fieldOptions = computed(() => allFields.value.filter((f: any) => selectablePath(f.path)))
+
 const shownFields = computed(() => {
   const set = new Set(visibleFields.value)
-  return allFields.value.filter((f) => set.has(f.path))
+  const byPath = new Map(allFields.value.map((f: any) => [f.path, f]))
+  return fieldOptions.value
+    .filter((f: any) => set.has(f.path))
+    .map((f: any) => {
+      if (source.value !== 'usage' || !usageCurrency.value) return f
+      const usdPath = currencyPath(f.path)
+      if (usdPath === f.path || !byPath.has(usdPath)) return f
+      return { ...f, path: usdPath }
+    })
 })
 
 function selectionKey() {
@@ -193,24 +229,15 @@ async function load() {
   const res = await api.history(source.value, source.value === 'usage' ? tokenId.value : undefined, 0)
   allFields.value = res.data.fields || []
   rows.value = (res.data.rows || []).slice().reverse() // 按日期及采集顺序倒序
-  const available = new Set(allFields.value.map((f: any) => f.path))
+  const available = new Set(fieldOptions.value.map((f: any) => f.path))
   const saved = fieldSelections.get(selectionKey())
   if (saved === undefined) {
-    visibleFields.value = allFields.value.map((f: any) => f.path)
+    visibleFields.value = fieldOptions.value.map((f: any) => f.path)
   } else {
     const selected = saved.filter((path) => available.has(path))
-    const selectedSet = new Set(selected)
-    const migrationKey = selectionKey()
-    const newlyAddedCurrencyFields = currencyFieldMigrations.has(migrationKey)
-      ? []
-      : allFields.value
-        .map((f: any) => f.path)
-        .filter((path: string) => path.endsWith('_usd') && !selectedSet.has(path))
-    visibleFields.value = [...selected, ...newlyAddedCurrencyFields]
-    if (newlyAddedCurrencyFields.length > 0) {
-      currencyFieldMigrations.add(migrationKey)
-      rememberVisibleFields()
-    }
+    visibleFields.value = selected.length === 0 && fieldOptions.value.length > 0
+      ? fieldOptions.value.map((f: any) => f.path)
+      : selected
   }
   if (saved === undefined) rememberVisibleFields()
   page.value = 1

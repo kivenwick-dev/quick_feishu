@@ -105,7 +105,11 @@ func (h *Handlers) GetLatest(c *gin.Context) {
 	if prev != nil {
 		prev.AccountRaw = publicAccountRaw(prev.AccountRaw)
 	}
-	sections := report.BuildSections(gdb, latest, prev, publicTemplate(tmpl))
+	currency, err := strconv.ParseBool(c.DefaultQuery("currency", "true"))
+	if err != nil {
+		currency = true
+	}
+	sections := report.BuildSections(gdb, latest, prev, publicTemplate(tmpl, currency))
 	for i := range sections {
 		for j := range sections[i].Tokens {
 			for k := range sections[i].Tokens[j].Metrics {

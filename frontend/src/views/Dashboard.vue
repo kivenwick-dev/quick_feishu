@@ -14,6 +14,12 @@
     <el-card v-if="metricOptions.length" shadow="never" class="metric-filter-card">
       <div class="metric-filter">
         <span class="metric-filter-label">显示指标</span>
+        <el-switch
+          v-model="usageCurrency"
+          active-text="金额"
+          inactive-text="配额"
+          @change="onUsageCurrencyChange"
+        />
         <el-select
           v-model="visibleMetricKeys"
           class="metric-selector"
@@ -141,6 +147,8 @@ const sections = computed(() => realSections.value)
 const visibleMetricKeys = ref<string[]>([])
 const metricSelectionInitialized = ref(false)
 const metricSelectionStorageKey = 'quick-feishu.dashboard.visible-metrics'
+const usageCurrencyStorageKey = 'quick-feishu.dashboard.usage-currency'
+const usageCurrency = ref(true)
 
 const usdFormatter = new Intl.NumberFormat('en-US', {
   style: 'currency',
@@ -154,6 +162,8 @@ function formatInteger(value: number) { return integerFormatter.format(value) }
 
 function restoreMetricSelection() {
   try {
+    const savedCurrency = localStorage.getItem(usageCurrencyStorageKey)
+    if (savedCurrency !== null) usageCurrency.value = savedCurrency === 'true'
     const saved = localStorage.getItem(metricSelectionStorageKey)
     if (saved === null) return
     const parsed = JSON.parse(saved)
@@ -170,6 +180,14 @@ function saveMetricSelection() {
     localStorage.setItem(metricSelectionStorageKey, JSON.stringify(visibleMetricKeys.value))
   } catch {
     // Browsers may disable local storage; filtering still works for the current visit.
+  }
+}
+
+function saveUsageCurrency() {
+  try {
+    localStorage.setItem(usageCurrencyStorageKey, String(usageCurrency.value))
+  } catch {
+    // Browsers may disable local storage; the switch still works for the current visit.
   }
 }
 
@@ -230,12 +248,17 @@ const issuesDialog = ref(false)
 async function load() {
   const [res, latest] = await Promise.all([
     api.dashboard(),
-    api.latest(),
+    api.latest(usageCurrency.value),
   ])
   logs.value = res.data.recent_logs || []
   date.value = latest.data.date
   realSections.value = latest.data.sections || []
   syncMetricSelection()
+}
+
+async function onUsageCurrencyChange() {
+  saveUsageCurrency()
+  await load()
 }
 
 async function refreshLiveBilling() {

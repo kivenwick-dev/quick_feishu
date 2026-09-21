@@ -93,7 +93,18 @@ func publicHistory(h *report.History) *report.History {
 	return h
 }
 
-func publicTemplate(t *report.Template) *report.Template {
+func publicDashboardMetricFields(source string) []string {
+	fields := []string{}
+	for _, field := range publicMetricFields(source) {
+		if source != "account" && strings.HasSuffix(field, "_usd") {
+			continue
+		}
+		fields = append(fields, field)
+	}
+	return fields
+}
+
+func publicTemplate(t *report.Template, currency bool) *report.Template {
 	out := *t
 	out.Sections = []report.Section{}
 	for _, s := range t.Sections {
@@ -102,7 +113,9 @@ func publicTemplate(t *report.Template) *report.Template {
 		for _, f := range s.Fields {
 			if publicMetric(s.Source, f.Field) {
 				f.Diff = true // 看板的统计指标始终计算增减，不依赖日报模板开关。
-				enablePublicCurrency(&f)
+				if s.Source == "account" || currency {
+					enablePublicCurrency(&f)
+				}
 				section.Fields = append(section.Fields, f)
 			}
 		}
@@ -111,10 +124,12 @@ func publicTemplate(t *report.Template) *report.Template {
 		for _, f := range section.Fields {
 			seen[f.Field] = true
 		}
-		for _, field := range publicMetricFields(s.Source) {
+		for _, field := range publicDashboardMetricFields(s.Source) {
 			if !seen[field] {
 				f := report.Field{Field: field, Diff: true}
-				enablePublicCurrency(&f)
+				if s.Source == "account" || currency {
+					enablePublicCurrency(&f)
+				}
 				section.Fields = append(section.Fields, f)
 			}
 		}

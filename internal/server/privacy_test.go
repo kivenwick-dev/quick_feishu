@@ -163,7 +163,7 @@ func TestAllQuantitativeMetricsRemainVisible(t *testing.T) {
 			t.Errorf("non-statistical field allowed: %s", field)
 		}
 	}
-	tmpl := publicTemplate(&report.Template{Sections: []report.Section{{Source: "account", Fields: []report.Field{{Field: "quota"}}}}})
+	tmpl := publicTemplate(&report.Template{Sections: []report.Section{{Source: "account", Fields: []report.Field{{Field: "quota"}}}}}, true)
 	if len(tmpl.Sections[0].Fields) != len(fields) {
 		t.Fatal("dashboard did not append additional metrics")
 	}
