@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"math"
 	"strconv"
+	"strings"
 	"time"
 
 	"quick-feishu/internal/collector"
@@ -36,6 +37,24 @@ func numericValue(value string) bool {
 	return err == nil && !math.IsNaN(n) && !math.IsInf(n, 0)
 }
 
+func currencyValue(value string) bool {
+	normalized := strings.TrimSpace(value)
+	normalized = strings.TrimPrefix(normalized, "+")
+	normalized = strings.TrimPrefix(normalized, "-")
+	normalized = strings.TrimPrefix(normalized, "$")
+	normalized = strings.ReplaceAll(normalized, ",", "")
+	return numericValue(normalized)
+}
+
+func publicMetricValue(field, value string) bool {
+	switch field {
+	case "balance_usd", "used_usd":
+		return currencyValue(value)
+	default:
+		return numericValue(value)
+	}
+}
+
 func publicHistory(h *report.History) *report.History {
 	fields := []report.HistoryField{}
 	for _, f := range h.Fields {
@@ -48,10 +67,10 @@ func publicHistory(h *report.History) *report.History {
 		row := &h.Rows[i]
 		values, deltas := map[string]string{}, map[string]string{}
 		for _, f := range fields {
-			if v, ok := row.Values[f.Path]; ok && numericValue(v) {
+			if v, ok := row.Values[f.Path]; ok && publicMetricValue(f.Path, v) {
 				values[f.Path] = v
 			}
-			if d, ok := row.Deltas[f.Path]; ok && numericValue(d) {
+			if d, ok := row.Deltas[f.Path]; ok && publicMetricValue(f.Path, d) {
 				deltas[f.Path] = d
 			}
 		}

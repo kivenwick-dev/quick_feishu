@@ -102,6 +102,7 @@ func (a *App) ConfigSnapshot() config.Config {
 
 // reportDeps 是生成日报所需的、在单次加锁下取得的依赖快照。
 type reportDeps struct {
+	client     *api.Client
 	gdb        *gorm.DB
 	template   map[string]interface{}
 	webhookURL string
@@ -113,6 +114,7 @@ func (a *App) reportDeps() reportDeps {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return reportDeps{
+		client:     a.client,
 		gdb:        a.db,
 		template:   a.Config.ReportTemplate,
 		webhookURL: a.Config.Feishu.WebhookURL,
@@ -130,16 +132,20 @@ func (a *App) RunSnapshot() (*collector.Result, error) {
 	return res, nil
 }
 
-// RunReport 取最近两日快照生成并发送日报。
+// RunReport 先采集当前快照，再与上一条快照对比生成并发送日报。
 // 无快照时返回 (nil, error)；发送失败时返回 (log, error)。
 func (a *App) RunReport() (*model.SendLog, error) {
 	deps := a.reportDeps()
+	res := collector.Collect(deps.client)
+	if err := collector.SaveForAccount(deps.gdb, Today(), res, deps.client.UserID); err != nil {
+		return nil, err
+	}
 	latest, err := db.LatestSnapshot(deps.gdb)
 	if err != nil || latest == nil {
 		return nil, fmt.Errorf("no snapshots yet")
 	}
 	var prev *model.Snapshot
-	if p, e := db.SnapshotBefore(deps.gdb, addDays(latest.SnapshotDate, -1)); e == nil {
+	if p, e := db.PreviousSnapshot(deps.gdb, latest); e == nil {
 		prev = p
 	}
 	tmpl, _ := report.TemplateFromMap(deps.template)
@@ -282,9 +288,4 @@ func (a *App) startLocked() error {
 	sch.Start()
 	a.sched = sch
 	return nil
-}
-
-func addDays(date string, n int) string {
-	d, _ := time.Parse("2006-01-02", date)
-	return d.AddDate(0, 0, n).Format("2006-01-02")
 }

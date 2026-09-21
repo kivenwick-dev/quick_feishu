@@ -1,11 +1,15 @@
 package app
 
 import (
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"gorm.io/datatypes"
 	"quick-feishu/internal/config"
 	"quick-feishu/internal/db"
 	"quick-feishu/internal/model"
@@ -27,6 +31,15 @@ func stubAPIServer(t *testing.T) *httptest.Server {
 	}))
 	t.Cleanup(srv.Close)
 	return srv
+}
+
+func mustReportJSON(t *testing.T, m map[string]interface{}) datatypes.JSON {
+	t.Helper()
+	b, err := json.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return datatypes.JSON(b)
 }
 
 func TestStartRestartAndNextRuns(t *testing.T) {
@@ -186,6 +199,74 @@ func TestRestartSameUserKeepsDatabase(t *testing.T) {
 	a.DB().Model(&model.Snapshot{}).Where("account_used = ?", 100).Count(&count)
 	if count != 1 {
 		t.Fatalf("data lost on same-user restart: count = %d", count)
+	}
+}
+
+func TestRunReportCollectsCurrentSnapshotBeforeSending(t *testing.T) {
+	clearCredentialEnv(t)
+	var webhookBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/user/self":
+			_, _ = w.Write([]byte(`{"data":{"id":827947,"quota":200,"used_quota":100,"request_count":9},"success":true}`))
+		case "/api/token/":
+			_, _ = w.Write([]byte(`{"data":{"page":1,"page_size":100,"total":0,"items":[]},"success":true}`))
+		case "/hook":
+			body, _ := io.ReadAll(r.Body)
+			webhookBody = string(body)
+			_, _ = w.Write([]byte(`{"code":0,"msg":"ok"}`))
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	cfg := config.Default()
+	cfg.Account.UserID = "827947"
+	cfg.Account.APIBase = srv.URL
+	cfg.Feishu.WebhookURL = srv.URL + "/hook"
+	cfg.ReportTemplate = map[string]interface{}{
+		"title":     "测试日报",
+		"date_mode": "auto",
+		"sections": []interface{}{
+			map[string]interface{}{
+				"section": "账号概况",
+				"source":  "account",
+				"fields": []interface{}{
+					map[string]interface{}{"field": "used_quota", "diff": true},
+				},
+			},
+		},
+	}
+	a, err := New(cfg, t.TempDir(), filepath.Join(t.TempDir(), "config.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SeedDicts(a.DB()); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.DB().Create(&model.Snapshot{SnapshotDate: "2026-09-20", AccountUsed: 50, AccountRaw: mustReportJSON(t, map[string]interface{}{"used_quota": float64(50)})}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := a.RunReport(); err != nil {
+		t.Fatal(err)
+	}
+	var count int64
+	a.DB().Model(&model.Snapshot{}).Count(&count)
+	if count != 2 {
+		t.Fatalf("snapshots = %d, want 2", count)
+	}
+	latest, err := db.LatestSnapshot(a.DB())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if latest.AccountUsed != 100 {
+		t.Fatalf("latest snapshot used = %d, want 100", latest.AccountUsed)
+	}
+	if !strings.Contains(webhookBody, "已用配额") || !strings.Contains(webhookBody, "+50") {
+		t.Fatalf("report did not use current-vs-previous snapshot diff: %s", webhookBody)
 	}
 }
 

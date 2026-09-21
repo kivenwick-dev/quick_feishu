@@ -121,6 +121,26 @@ func TestPublicHistoryDropsNonNumericMetrics(t *testing.T) {
 	}
 }
 
+func TestPublicHistoryKeepsCurrencyMetrics(t *testing.T) {
+	h := publicHistory(&report.History{
+		Source: "account",
+		Fields: []report.HistoryField{
+			{Path: "balance_usd", Label: "当前余额"},
+			{Path: "used_usd", Label: "历史消耗"},
+		},
+		Rows: []report.HistoryRow{{
+			Values: map[string]string{"balance_usd": "$66,908.23", "used_usd": "$58,721.14"},
+			Deltas: map[string]string{"balance_usd": "-$108.23", "used_usd": "+$121.14"},
+		}},
+	})
+	if h.Rows[0].Values["balance_usd"] != "$66,908.23" {
+		t.Fatalf("balance_usd was filtered: %+v", h.Rows[0])
+	}
+	if h.Rows[0].Deltas["balance_usd"] != "-$108.23" || h.Rows[0].Deltas["used_usd"] != "+$121.14" {
+		t.Fatalf("currency deltas were filtered: %+v", h.Rows[0])
+	}
+}
+
 func TestAllQuantitativeMetricsRemainVisible(t *testing.T) {
 	fields := []string{"quota", "used_quota", "balance_usd", "used_usd", "request_count", "aff_count", "aff_quota", "aff_history_quota", "top_up_rebate_count", "withdrawn_quota", "invoice_returned_quota", "support_ticket_cap"}
 	history := &report.History{Source: "account", Rows: []report.HistoryRow{{Values: map[string]string{}, Deltas: map[string]string{}}}}
