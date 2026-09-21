@@ -90,4 +90,34 @@ describe('snapshot history', () => {
     expect(wrapper.findAll('.mcard')).toHaveLength(0)
     wrapper.unmount()
   })
+
+  it('shows a clear usage amount mode and swaps to currency fields', async () => {
+    localStorage.setItem('quick-feishu.snapshots.usage-currency', 'true')
+    vi.mocked(api.tokens).mockResolvedValue({data:{items:[{token_id:7,token_name:'令牌 A'}]}} as any)
+    vi.mocked(api.history).mockImplementation(async (source: string) => ({data: source === 'account' ? {
+      fields: [{path:'used_quota',label:'已用配额'}],
+      rows: [{id:1,date:'2026-09-20',captured_at:'2026-09-20T08:00:00+08:00',values:{used_quota:'10'},deltas:{}}],
+    } : {
+      fields: [
+        {path:'total_available',label:'可用总量'},
+        {path:'total_available_usd',label:'可用总量（金额）'},
+      ],
+      rows: [{id:1,date:'2026-09-20',captured_at:'2026-09-20T08:00:00+08:00',values:{total_available:'500000',total_available_usd:'$1.00'},deltas:{}}],
+    }} as any))
+
+    const wrapper = mount(Snapshots,{global:{plugins:[ElementPlus]}})
+    await flushPromises()
+    const sourcePicker = wrapper.findComponent({name:'ElRadioGroup'})
+    sourcePicker.vm.$emit('update:modelValue', 'usage')
+    await flushPromises()
+    sourcePicker.vm.$emit('change', 'usage')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('金额')
+    expect(wrapper.text()).toContain('配额')
+    expect(wrapper.find('.mcard').text()).toContain('可用总量（金额）')
+    expect(wrapper.find('.mcard').text()).toContain('$1.00')
+
+    wrapper.unmount()
+  })
 })

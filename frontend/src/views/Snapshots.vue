@@ -34,6 +34,16 @@
           @change="onFilterChange"
         />
 
+        <el-radio-group
+          v-if="source === 'usage'"
+          v-model="usageCurrency"
+          class="currency-mode"
+          @change="saveUsageCurrency"
+        >
+          <el-radio-button :value="true">金额</el-radio-button>
+          <el-radio-button :value="false">配额</el-radio-button>
+        </el-radio-group>
+
         <el-select
           v-model="visibleFields"
           class="field-selector"
@@ -46,13 +56,6 @@
         >
           <el-option v-for="f in fieldOptions" :key="f.path" :value="f.path" :label="f.label || f.path" />
         </el-select>
-        <el-switch
-          v-if="source === 'usage'"
-          v-model="usageCurrency"
-          active-text="金额"
-          inactive-text="配额"
-          @change="saveUsageCurrency"
-        />
       </div>
     </el-card>
 
@@ -111,6 +114,8 @@ const rows = ref<any[]>([])
 
 function restoreFieldSelections() {
   try {
+    const savedCurrency = localStorage.getItem(usageCurrencyStorageKey)
+    if (savedCurrency !== null) usageCurrency.value = savedCurrency === 'true'
     const saved = localStorage.getItem(fieldSelectionsStorageKey)
     if (saved === null) return
     const parsed = JSON.parse(saved)
@@ -120,8 +125,6 @@ function restoreFieldSelections() {
         fieldSelections.set(key, paths as string[])
       }
     }
-    const savedCurrency = localStorage.getItem(usageCurrencyStorageKey)
-    if (savedCurrency !== null) usageCurrency.value = savedCurrency === 'true'
   } catch {
     // Ignore unavailable storage and malformed data; each source will default to all fields.
   }
@@ -177,7 +180,7 @@ const shownFields = computed(() => {
       if (source.value !== 'usage' || !usageCurrency.value) return f
       const usdPath = currencyPath(f.path)
       if (usdPath === f.path || !byPath.has(usdPath)) return f
-      return { ...f, path: usdPath }
+      return byPath.get(usdPath)
     })
 })
 
@@ -273,6 +276,10 @@ onMounted(async () => {
   gap: 12px;
   align-items: center;
   flex-wrap: wrap;
+}
+
+.currency-mode {
+  flex: 0 0 auto;
 }
 
 .day-panel {
