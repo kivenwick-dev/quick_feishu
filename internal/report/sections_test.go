@@ -125,11 +125,11 @@ func TestBuildSectionsUsageTree(t *testing.T) {
 
 	gdb.Create(&model.TokenSnapshot{
 		SnapshotID: latest.ID, TokenID: 1, TokenName: "claude", TotalUsed: 5,
-		UsageRaw: mustJSON(t, map[string]interface{}{"name": "claude", "total_used": float64(5), "total_available": float64(95)}),
+		UsageRaw: mustJSON(t, map[string]interface{}{"name": "claude", "total_used": float64(5), "total_available": float64(75), "total_granted": float64(100)}),
 	})
 	gdb.Create(&model.TokenSnapshot{
 		SnapshotID: latest.ID, TokenID: 2, TokenName: "gpt", TotalUsed: 7,
-		UsageRaw: mustJSON(t, map[string]interface{}{"name": "gpt", "total_used": float64(7), "total_available": float64(93)}),
+		UsageRaw: mustJSON(t, map[string]interface{}{"name": "gpt", "total_used": float64(7), "total_available": float64(93), "total_granted": float64(100)}),
 	})
 
 	tmpl := &Template{Sections: []Section{
@@ -150,14 +150,17 @@ func TestBuildSectionsUsageTree(t *testing.T) {
 	if toks[0].Name != "claude" || toks[1].Name != "gpt" {
 		t.Errorf("bad node names: %q %q", toks[0].Name, toks[1].Name)
 	}
-	if len(toks[0].Metrics) != 2 {
-		t.Fatalf("metrics = %d, want 2 (name excluded): %+v", len(toks[0].Metrics), toks[0].Metrics)
+	if len(toks[0].Metrics) != 3 {
+		t.Fatalf("metrics = %d, want 3 (name excluded + remaining percent): %+v", len(toks[0].Metrics), toks[0].Metrics)
 	}
 	if toks[0].Metrics[0].Label != "累计已用" || toks[0].Metrics[0].Value != "5" {
 		t.Errorf("bad metric 0: %+v", toks[0].Metrics[0])
 	}
-	if toks[0].Metrics[1].Label != "可用总量" || toks[0].Metrics[1].Value != "95" {
+	if toks[0].Metrics[1].Label != "可用总量" || toks[0].Metrics[1].Value != "75" {
 		t.Errorf("bad metric 1: %+v", toks[0].Metrics[1])
+	}
+	if toks[0].Metrics[2].Label != "剩余用量" || toks[0].Metrics[2].Value != "75%" {
+		t.Errorf("bad remaining percent metric: %+v", toks[0].Metrics[2])
 	}
 }
 
@@ -231,6 +234,32 @@ func TestBuildSectionsUsageCurrencySwitch(t *testing.T) {
 	got = secs[0].Tokens[0].Metrics[0]
 	if got.Value != "$4.00" || got.Delta != "+$1.00" || got.DeltaLabel != "消耗" {
 		t.Errorf("available currency metric should show consumption, got %+v", got)
+	}
+}
+
+func TestBuildSectionsRemainingPercentUsesLiveOverrides(t *testing.T) {
+	gdb, err := db.Init(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.SeedDicts(gdb)
+
+	latest := &model.Snapshot{SnapshotDate: "2026-09-18", AccountRaw: mustJSON(t, map[string]interface{}{})}
+	gdb.Create(latest)
+	gdb.Create(&model.TokenSnapshot{SnapshotID: latest.ID, TokenID: 1, TokenName: "claude",
+		UsageRaw: mustJSON(t, map[string]interface{}{"total_available": float64(50), "total_granted": float64(100)})})
+
+	tmpl := &Template{Sections: []Section{
+		{Name: "用量", Source: "usage", PerToken: true, Fields: []Field{{Field: remainingPercentField}}},
+	}}
+	overrides := map[int]map[string]interface{}{1: map[string]interface{}{"total_available": int64(300), "total_granted": int64(450)}}
+	secs := BuildSectionsWithOverrides(gdb, latest, nil, tmpl, nil, overrides, 500000)
+	got := secs[0].Tokens[0].Metrics[0]
+	if got.Label != "剩余用量" || got.Value != "67%" {
+		t.Errorf("remaining percent should use live overrides and round to integer, got %+v", got)
+	}
+	if len(secs[0].Tokens[0].Metrics) != 1 {
+		t.Errorf("remaining percent should not be duplicated when selected in template: %+v", secs[0].Tokens[0].Metrics)
 	}
 }
 

@@ -18,7 +18,7 @@ func publicMetricFields(source string) []string {
 	case "account":
 		return []string{"quota", "used_quota", "balance_usd", "used_usd", "request_count", "aff_count", "aff_quota", "aff_history_quota", "top_up_rebate_count", "withdrawn_quota", "invoice_returned_quota", "support_ticket_cap"}
 	case "usage", "token":
-		return []string{"total_available", "total_granted", "total_used", "used_quota", "remain_quota"}
+		return []string{"total_available", "total_granted", "total_used", "remaining_percent", "used_quota", "remain_quota"}
 	}
 	return nil
 }
@@ -33,6 +33,8 @@ func publicMetric(source, field string) bool {
 }
 
 func numericValue(value string) bool {
+	value = strings.TrimSpace(value)
+	value = strings.TrimSuffix(value, "%")
 	n, err := strconv.ParseFloat(value, 64)
 	return err == nil && !math.IsNaN(n) && !math.IsInf(n, 0)
 }

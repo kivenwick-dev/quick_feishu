@@ -3,12 +3,15 @@ package report
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 
 	"gorm.io/gorm"
 	"quick-feishu/internal/db"
 	"quick-feishu/internal/feishu"
 	"quick-feishu/internal/model"
 )
+
+const remainingPercentField = "remaining_percent"
 
 // TemplateFromMap 将配置中的 report_template map 转换为 Template；为空时返回默认模板。
 func TemplateFromMap(m map[string]interface{}) (*Template, error) {
@@ -115,9 +118,17 @@ func BuildSectionsWithOverrides(gdb *gorm.DB, latest, prev *model.Snapshot, tmpl
 					pt = &p
 				}
 				node := TokenNode{Name: tok.TokenName}
+				hasRemainingPercent := false
 				for _, f := range sec.Fields {
 					if f.Field == "" || f.Field == "name" {
 						continue // name 用作二级节点标题，不再作为指标
+					}
+					if f.Field == remainingPercentField {
+						if metric, ok := remainingPercentMetric(tok, tokenOverrides); ok {
+							node.Metrics = append(node.Metrics, metric)
+							hasRemainingPercent = true
+						}
+						continue
 					}
 					lateVal, ok := extractTokenField(tok, f.Field)
 					if !ok {
@@ -148,6 +159,11 @@ func BuildSectionsWithOverrides(gdb *gorm.DB, latest, prev *model.Snapshot, tmpl
 						HasDelta:   res.IsDiff,
 					})
 				}
+				if !hasRemainingPercent {
+					if metric, ok := remainingPercentMetric(tok, tokenOverrides); ok {
+						node.Metrics = append(node.Metrics, metric)
+					}
+				}
 				s.Tokens = append(s.Tokens, node)
 			}
 			if len(s.Tokens) > 0 {
@@ -156,6 +172,38 @@ func BuildSectionsWithOverrides(gdb *gorm.DB, latest, prev *model.Snapshot, tmpl
 		}
 	}
 	return sections
+}
+
+func remainingPercentMetric(tok model.TokenSnapshot, tokenOverrides map[int]map[string]interface{}) (Metric, bool) {
+	available, ok := tokenDisplayValue(tok, "total_available", tokenOverrides)
+	if !ok {
+		return Metric{}, false
+	}
+	granted, ok := tokenDisplayValue(tok, "total_granted", tokenOverrides)
+	if !ok {
+		return Metric{}, false
+	}
+	availableNum, ok := toFloat(available)
+	if !ok {
+		return Metric{}, false
+	}
+	grantedNum, ok := toFloat(granted)
+	if !ok || grantedNum == 0 {
+		return Metric{}, false
+	}
+	percent := int(math.Round(availableNum / grantedNum * 100))
+	return Metric{Label: "剩余用量", Value: fmt.Sprintf("%d%%", percent)}, true
+}
+
+func tokenDisplayValue(tok model.TokenSnapshot, field string, tokenOverrides map[int]map[string]interface{}) (interface{}, bool) {
+	if tokenOverrides != nil {
+		if byField, ok := tokenOverrides[tok.TokenID]; ok {
+			if override, ok := byField[field]; ok {
+				return override, true
+			}
+		}
+	}
+	return extractTokenField(tok, field)
 }
 
 // ExecuteReport 取最新两日快照，按模板计算差值生成卡片，推送到飞书并记录日志。

@@ -95,6 +95,7 @@ var usageSeeds = []dictSeed{
 	{"total_available", "int", "可用总量", ""},
 	{"total_granted", "int", "授予总量", ""},
 	{"total_used", "int", "累计已用", ""},
+	{"remaining_percent", "int", "剩余用量", "可用总量 ÷ 授予总量，按整数百分比展示"},
 	{"unlimited_quota", "bool", "无限配额", ""},
 }
 
