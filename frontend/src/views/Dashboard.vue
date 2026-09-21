@@ -211,7 +211,14 @@ function syncMetricSelection() {
     return
   }
   const availableSet = new Set(available)
-  visibleMetricKeys.value = visibleMetricKeys.value.filter((key) => availableSet.has(key))
+  const validSelection = visibleMetricKeys.value.filter((key) => availableSet.has(key))
+  // An empty or completely stale browser-side selection otherwise hides every
+  // card while leaving section/token headings visible. This is especially easy
+  // to hit after deploying under a hostname with old localStorage data or after
+  // changing the report template labels.
+  visibleMetricKeys.value = validSelection.length === 0 && available.length > 0
+    ? available
+    : validSelection
   saveMetricSelection()
 }
 const logs = ref<any[]>([])

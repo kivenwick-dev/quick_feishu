@@ -90,4 +90,35 @@ describe('Dashboard', () => {
     expect(remounted.findAll('.mcard')).toHaveLength(1)
     remounted.unmount()
   })
+
+  it.each([
+    ['an empty selection', []],
+    ['a stale selection', ['0:旧指标']],
+  ])('restores all dashboard cards from %s in local storage', async (_case, savedSelection) => {
+    localStorage.setItem('quick-feishu.dashboard.visible-metrics', JSON.stringify(savedSelection))
+    vi.mocked(api.latest).mockResolvedValue({ data: {
+      date: '2026-09-21',
+      sections: [{
+        name: '账号概况',
+        fields: [
+          { label: '已用配额', value: '100', is_diff: false },
+          { label: '请求次数', value: '20', is_diff: false },
+        ],
+      }],
+    } } as any)
+
+    const wrapper = mount(Dashboard, { global: { plugins: [ElementPlus] } })
+    await flushPromises()
+
+    expect(wrapper.findComponent({ name: 'ElSelect' }).props('modelValue')).toEqual([
+      '0:已用配额',
+      '0:请求次数',
+    ])
+    expect(wrapper.findAll('.mcard')).toHaveLength(2)
+    expect(JSON.parse(localStorage.getItem('quick-feishu.dashboard.visible-metrics') || '[]')).toEqual([
+      '0:已用配额',
+      '0:请求次数',
+    ])
+    wrapper.unmount()
+  })
 })
