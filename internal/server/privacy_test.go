@@ -141,6 +141,36 @@ func TestPublicHistoryKeepsCurrencyMetrics(t *testing.T) {
 	}
 }
 
+func TestPublicTemplateCurrencyMode(t *testing.T) {
+	currencyEnabled := true
+	tmpl := &report.Template{Sections: []report.Section{{
+		Source: "account",
+		Fields: []report.Field{
+			{Field: "balance_usd", Currency: &currencyEnabled},
+			{Field: "used_usd", Currency: &currencyEnabled},
+		},
+	}}}
+
+	quota := publicTemplate(tmpl, false)
+	for _, field := range quota.Sections[0].Fields {
+		if field.CurrencyEnabled() {
+			t.Errorf("quota mode kept currency enabled for %s", field.Field)
+		}
+	}
+
+	amount := publicTemplate(tmpl, true)
+	for _, field := range amount.Sections[0].Fields {
+		if field.Field == "balance_usd" || field.Field == "used_usd" {
+			if !field.CurrencyEnabled() {
+				t.Errorf("currency mode disabled currency for %s", field.Field)
+			}
+		}
+		if field.Field != "balance_usd" && field.Field != "used_usd" && field.CurrencyEnabled() {
+			t.Errorf("currency mode disabled currency for %s", field.Field)
+		}
+	}
+}
+
 func TestAllQuantitativeMetricsRemainVisible(t *testing.T) {
 	fields := []string{"quota", "used_quota", "balance_usd", "used_usd", "request_count", "aff_count", "aff_quota", "aff_history_quota", "top_up_rebate_count", "withdrawn_quota", "invoice_returned_quota", "support_ticket_cap"}
 	history := &report.History{Source: "account", Rows: []report.HistoryRow{{Values: map[string]string{}, Deltas: map[string]string{}}}}

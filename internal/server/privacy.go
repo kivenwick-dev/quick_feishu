@@ -69,6 +69,18 @@ func enablePublicCurrency(f *report.Field) {
 	}
 }
 
+func setPublicCurrency(f *report.Field, enabled bool) {
+	if !enabled {
+		switch f.Field {
+		case "balance_usd", "used_usd", "total_available", "total_granted", "total_used":
+			off := false
+			f.Currency = &off
+		}
+		return
+	}
+	enablePublicCurrency(f)
+}
+
 func publicHistory(h *report.History) *report.History {
 	fields := []report.HistoryField{}
 	for _, f := range h.Fields {
@@ -113,9 +125,7 @@ func publicTemplate(t *report.Template, currency bool) *report.Template {
 		for _, f := range s.Fields {
 			if publicMetric(s.Source, f.Field) {
 				f.Diff = true // 看板的统计指标始终计算增减，不依赖日报模板开关。
-				if s.Source == "account" || currency {
-					enablePublicCurrency(&f)
-				}
+				setPublicCurrency(&f, currency)
 				section.Fields = append(section.Fields, f)
 			}
 		}
@@ -127,9 +137,7 @@ func publicTemplate(t *report.Template, currency bool) *report.Template {
 		for _, field := range publicDashboardMetricFields(s.Source) {
 			if !seen[field] {
 				f := report.Field{Field: field, Diff: true}
-				if s.Source == "account" || currency {
-					enablePublicCurrency(&f)
-				}
+				setPublicCurrency(&f, currency)
 				section.Fields = append(section.Fields, f)
 			}
 		}
