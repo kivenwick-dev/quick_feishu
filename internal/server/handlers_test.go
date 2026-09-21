@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -91,6 +92,50 @@ func TestGetDictAccount(t *testing.T) {
 	s.Engine.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Errorf("code = %d", w.Code)
+	}
+}
+
+func TestGetSettingsReturnsConfiguredValues(t *testing.T) {
+	for _, key := range []string{"QR_USER_ID", "QR_SYSTEM_TOKEN", "QR_FEISHU_WEBHOOK"} {
+		t.Setenv(key, "")
+	}
+	gin.SetMode(gin.TestMode)
+	cfg := config.Default()
+	cfg.Account.UserID = "account-1"
+	cfg.Account.SystemToken = "system-token"
+	cfg.Account.APIBase = "https://api.example.test"
+	cfg.Feishu.WebhookURL = "https://open.feishu.cn/open-apis/bot/v2/hook/new"
+	a, err := app.New(cfg, t.TempDir(), filepath.Join(t.TempDir(), "config.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := &Handlers{App: a}
+	s := New(0)
+	s.RegisterRoutes(h)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/settings", nil)
+	s.Engine.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d body = %s", w.Code, w.Body.String())
+	}
+	var body struct {
+		Config config.Config `json:"config"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if got := body.Config.Account.UserID; got != "account-1" {
+		t.Fatalf("user_id = %q", got)
+	}
+	if got := body.Config.Account.SystemToken; got != "system-token" {
+		t.Fatalf("system_token = %q", got)
+	}
+	if got := body.Config.Account.APIBase; got != "https://api.example.test" {
+		t.Fatalf("api_base = %q", got)
+	}
+	if got := body.Config.Feishu.WebhookURL; got != "https://open.feishu.cn/open-apis/bot/v2/hook/new" {
+		t.Fatalf("webhook_url = %q", got)
 	}
 }
 

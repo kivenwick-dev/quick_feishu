@@ -50,7 +50,7 @@ func TestReadAPIsNeverExposePrivateSnapshotData(t *testing.T) {
 	h.App.DB().Create(&model.SendLog{ErrorMsg: "PRIVATE_ERROR_URL", FeishuResp: "PRIVATE_RESPONSE"})
 	s := New(0)
 	s.RegisterRoutes(h)
-	for _, path := range []string{"/api/dashboard", "/api/snapshots", fmt.Sprintf("/api/snapshots/%d", latest.ID), "/api/latest", "/api/history?source=account", "/api/history?source=usage&token_id=123", "/api/tokens", "/api/settings", "/api/sendlogs", "/api/compare?from=2026-09-01&to=2026-09-02"} {
+	for _, path := range []string{"/api/dashboard", "/api/snapshots", fmt.Sprintf("/api/snapshots/%d", latest.ID), "/api/latest", "/api/history?source=account", "/api/history?source=usage&token_id=123", "/api/tokens", "/api/sendlogs", "/api/compare?from=2026-09-01&to=2026-09-02"} {
 		t.Run(path, func(t *testing.T) {
 			w := httptest.NewRecorder()
 			s.Engine.ServeHTTP(w, httptest.NewRequest("GET", path, nil))

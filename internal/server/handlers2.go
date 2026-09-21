@@ -161,10 +161,6 @@ func (h *Handlers) SaveDict(c *gin.Context) {
 func (h *Handlers) GetSettings(c *gin.Context) {
 	snapshot := h.App.ConfigSnapshot()
 	public := snapshot
-	public.Account.UserID = ""
-	public.Account.SystemToken = ""
-	public.Account.APIBase = ""
-	public.Feishu.WebhookURL = ""
 	c.JSON(http.StatusOK, gin.H{
 		"config":         public,
 		"configured":     gin.H{"user_id": snapshot.Account.UserID != "", "system_token": snapshot.Account.SystemToken != "", "api_base": snapshot.Account.APIBase != "", "webhook_url": snapshot.Feishu.WebhookURL != ""},
