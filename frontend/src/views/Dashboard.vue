@@ -84,6 +84,7 @@
               :label="m.label"
               :value="m.value"
               :delta="m.has_delta ? m.delta : ''"
+              :delta-label="m.delta_label"
               :note="negativeQuotaNote(m.label, m.value)"
             />
           </div>
@@ -97,6 +98,7 @@
           :label="f.label"
           :value="f.value"
           :delta="f.is_diff ? f.delta : ''"
+          :delta-label="f.delta_label"
         />
       </div>
     </div>

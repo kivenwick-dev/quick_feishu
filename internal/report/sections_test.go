@@ -69,7 +69,7 @@ func TestBuildSectionsAccountDerivedUSDFields(t *testing.T) {
 	prev := &model.Snapshot{
 		SnapshotDate: "2026-09-17",
 		AccountRaw:   mustJSON(t, map[string]interface{}{}),
-		AccountQuota: 33400000000,
+		AccountQuota: 33500000000,
 		AccountUsed:  29300000000,
 	}
 	latest := &model.Snapshot{
@@ -95,10 +95,10 @@ func TestBuildSectionsAccountDerivedUSDFields(t *testing.T) {
 	if len(fields) != 2 {
 		t.Fatalf("fields = %d, want 2: %+v", len(fields), fields)
 	}
-	if fields[0].Label != "当前余额" || fields[0].Value != "$66,908.23" || fields[0].Delta != "+$108.23" {
+	if fields[0].Label != "当前余额" || fields[0].Value != "$66,908.23" || fields[0].Delta != "+$91.77" || fields[0].DeltaLabel != "消耗" {
 		t.Errorf("bad balance field: %+v", fields[0])
 	}
-	if fields[1].Label != "历史消耗" || fields[1].Value != "$58,721.14" || fields[1].Delta != "+$121.14" {
+	if fields[1].Label != "历史消耗" || fields[1].Value != "$58,721.14" || fields[1].Delta != "+$121.14" || fields[1].DeltaLabel != "变动" {
 		t.Errorf("bad used field: %+v", fields[1])
 	}
 
@@ -106,7 +106,7 @@ func TestBuildSectionsAccountDerivedUSDFields(t *testing.T) {
 	tmpl.Sections[0].Fields = []Field{{Field: "balance_usd", Diff: true, Currency: &off}}
 	secs = BuildSections(gdb, latest, prev, tmpl)
 	got := secs[0].Fields[0]
-	if got.Value != "33454114092" || got.Delta != "+54114092" {
+	if got.Value != "33454114092" || got.Delta != "+45885908" || got.DeltaLabel != "消耗" {
 		t.Errorf("currency disabled should render quota, got %+v", got)
 	}
 }
@@ -202,9 +202,9 @@ func TestBuildSectionsUsageCurrencySwitch(t *testing.T) {
 	gdb.Create(prev)
 	gdb.Create(latest)
 	gdb.Create(&model.TokenSnapshot{SnapshotID: prev.ID, TokenID: 1, TokenName: "claude",
-		UsageRaw: mustJSON(t, map[string]interface{}{"total_used": float64(500000)})})
+		UsageRaw: mustJSON(t, map[string]interface{}{"total_used": float64(500000), "total_available": float64(1500000)})})
 	gdb.Create(&model.TokenSnapshot{SnapshotID: latest.ID, TokenID: 1, TokenName: "claude",
-		UsageRaw: mustJSON(t, map[string]interface{}{"total_used": float64(1000000)})})
+		UsageRaw: mustJSON(t, map[string]interface{}{"total_used": float64(1000000), "total_available": float64(1000000)})})
 
 	on := true
 	off := false
@@ -223,6 +223,14 @@ func TestBuildSectionsUsageCurrencySwitch(t *testing.T) {
 	got = secs[0].Tokens[0].Metrics[0]
 	if got.Value != "1500000" || got.Delta != "+500000" {
 		t.Errorf("currency disabled bad metric: %+v", got)
+	}
+
+	tmpl.Sections[0].Fields = []Field{{Field: "total_available", Diff: true, Currency: &on}}
+	overrides = map[int]map[string]interface{}{1: map[string]interface{}{"total_available": int64(2000000)}}
+	secs = BuildSectionsWithOverrides(gdb, latest, prev, tmpl, nil, overrides, 500000)
+	got = secs[0].Tokens[0].Metrics[0]
+	if got.Value != "$4.00" || got.Delta != "+$1.00" || got.DeltaLabel != "消耗" {
+		t.Errorf("available currency metric should show consumption, got %+v", got)
 	}
 }
 
@@ -250,10 +258,10 @@ func TestTreeContent(t *testing.T) {
 
 func TestFlatContentWithDelta(t *testing.T) {
 	s := flatContent([]DiffResult{
-		{Label: "总配额", Value: "6459941149", Delta: "+123", IsDiff: true},
+		{Label: "总配额", Value: "6459941149", Delta: "+123", DeltaLabel: "消耗", IsDiff: true},
 		{Label: "请求次数", Value: "10"},
 	})
-	for _, want := range []string{"**总配额**：6459941149", "└─ 总配额（变动）：+123", "**请求次数**：10"} {
+	for _, want := range []string{"**总配额**：6459941149", "└─ 总配额（消耗）：+123", "**请求次数**：10"} {
 		if !strings.Contains(s, want) {
 			t.Errorf("missing %q in:\n%s", want, s)
 		}

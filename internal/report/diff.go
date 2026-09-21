@@ -19,6 +19,29 @@ func isTokenUSDField(path string) bool {
 	return path == "total_available" || path == "total_used" || path == "total_granted"
 }
 
+func isConsumptionDeltaField(path string) bool {
+	switch path {
+	case "quota", "balance_usd", "total_available", "remain_quota":
+		return true
+	default:
+		return false
+	}
+}
+
+func deltaLabel(path string) string {
+	if isConsumptionDeltaField(path) {
+		return "消耗"
+	}
+	return "变动"
+}
+
+func deltaAmount(path string, late, early float64) float64 {
+	if isConsumptionDeltaField(path) {
+		return early - late
+	}
+	return late - early
+}
+
 func snapshotAccountField(s *model.Snapshot, path string) (interface{}, bool) {
 	if s == nil {
 		return nil, false
@@ -70,11 +93,12 @@ func splitPath(p string) []string {
 
 // DiffResult 单字段结果：Value 为今日值；若启用差值且可计算，Delta 为带符号变动值。
 type DiffResult struct {
-	Field  string `json:"field"`
-	Label  string `json:"label"`
-	Value  string `json:"value"` // 今日值（始终展示）
-	Delta  string `json:"delta"` // 变动值（带符号），仅当 IsDiff 为 true
-	IsDiff bool   `json:"is_diff"`
+	Field      string `json:"field"`
+	Label      string `json:"label"`
+	Value      string `json:"value"`       // 今日值（始终展示）
+	Delta      string `json:"delta"`       // 变动值（带符号），仅当 IsDiff 为 true
+	DeltaLabel string `json:"delta_label"` // 变动含义，如“变动”或“消耗”
+	IsDiff     bool   `json:"is_diff"`
 }
 
 // ComputeDiffAccount 对账号快照字段取值并计算差值。
@@ -120,17 +144,27 @@ func DiffFieldValue(field, label string, lateVal, earlyVal interface{}, wantDiff
 
 func DiffFieldDisplayValue(field, label string, displayVal, lateDeltaVal, earlyVal interface{}, wantDiff bool, currency bool, quotaPerUnit int64) DiffResult {
 	if !isUSDField(field) || !currency || quotaPerUnit <= 0 {
-		return DiffDisplayValue(label, displayVal, lateDeltaVal, earlyVal, wantDiff)
+		res := DiffResult{Field: field, Label: label, Value: formatVal(displayVal), DeltaLabel: deltaLabel(field)}
+		if !wantDiff {
+			return res
+		}
+		ln, lok := toFloat(lateDeltaVal)
+		en, eok := toFloat(earlyVal)
+		if lok && eok {
+			res.Delta = signedNum(deltaAmount(field, ln, en))
+			res.IsDiff = true
+		}
+		return res
 	}
 	rate := float64(quotaPerUnit)
-	res := DiffResult{Label: label, Value: formatUSDValue(displayVal, rate)}
+	res := DiffResult{Field: field, Label: label, Value: formatUSDValue(displayVal, rate), DeltaLabel: deltaLabel(field)}
 	if !wantDiff {
 		return res
 	}
 	ln, lok := toFloat(lateDeltaVal)
 	en, eok := toFloat(earlyVal)
 	if lok && eok {
-		res.Delta = signedCurrencyDelta((ln - en) / rate)
+		res.Delta = signedCurrencyDelta(deltaAmount(field, ln, en) / rate)
 		res.IsDiff = true
 	}
 	return res
@@ -138,17 +172,27 @@ func DiffFieldDisplayValue(field, label string, displayVal, lateDeltaVal, earlyV
 
 func DiffTokenUSDDisplayValue(field, label string, displayVal, lateQuotaVal, earlyQuotaVal interface{}, quotaPerUnit int64, wantDiff bool, currency bool) DiffResult {
 	if !isTokenUSDField(field) || !currency || quotaPerUnit <= 0 {
-		return DiffDisplayValue(label, displayVal, lateQuotaVal, earlyQuotaVal, wantDiff)
+		res := DiffResult{Field: field, Label: label, Value: formatVal(displayVal), DeltaLabel: deltaLabel(field)}
+		if !wantDiff {
+			return res
+		}
+		ln, lok := toFloat(lateQuotaVal)
+		en, eok := toFloat(earlyQuotaVal)
+		if lok && eok {
+			res.Delta = signedNum(deltaAmount(field, ln, en))
+			res.IsDiff = true
+		}
+		return res
 	}
 	rate := float64(quotaPerUnit)
-	res := DiffResult{Label: label, Value: formatUSDValue(displayVal, rate)}
+	res := DiffResult{Field: field, Label: label, Value: formatUSDValue(displayVal, rate), DeltaLabel: deltaLabel(field)}
 	if !wantDiff {
 		return res
 	}
 	ln, lok := toFloat(lateQuotaVal)
 	en, eok := toFloat(earlyQuotaVal)
 	if lok && eok {
-		res.Delta = signedCurrencyDelta((ln - en) / rate)
+		res.Delta = signedCurrencyDelta(deltaAmount(field, ln, en) / rate)
 		res.IsDiff = true
 	}
 	return res

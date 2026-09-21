@@ -12,7 +12,7 @@
       </el-tooltip>
     </div>
     <div class="metric-line change-line">
-      <span class="change-label">变动：</span>
+      <span class="change-label">{{ displayDeltaLabel }}：</span>
       <el-tooltip :content="displayDelta" placement="top" :show-after="200" popper-class="metric-tooltip">
         <span class="metric-value" :class="direction" tabindex="0">{{ displayDelta }}</span>
       </el-tooltip>
@@ -27,6 +27,7 @@ const props = defineProps<{
   label: string
   value?: string | number | null
   delta?: string | number | null
+  deltaLabel?: string | null
   note?: string
 }>()
 
@@ -47,6 +48,7 @@ const displayDelta = computed(() => {
   if (direction.value === 'up' && !value.startsWith('+')) return `+${value}`
   return value
 })
+const displayDeltaLabel = computed(() => String(props.deltaLabel || '变动').trim() || '变动')
 </script>
 
 <style scoped>

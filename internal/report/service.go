@@ -141,10 +141,11 @@ func BuildSectionsWithOverrides(gdb *gorm.DB, latest, prev *model.Snapshot, tmpl
 					}
 					res := DiffTokenUSDDisplayValue(f.Field, label, displayVal, lateVal, earlyVal, quotaPerUnit, f.Diff, f.CurrencyEnabled())
 					node.Metrics = append(node.Metrics, Metric{
-						Label:    res.Label,
-						Value:    res.Value,
-						Delta:    res.Delta,
-						HasDelta: res.IsDiff,
+						Label:      res.Label,
+						Value:      res.Value,
+						Delta:      res.Delta,
+						DeltaLabel: res.DeltaLabel,
+						HasDelta:   res.IsDiff,
 					})
 				}
 				s.Tokens = append(s.Tokens, node)

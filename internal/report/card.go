@@ -53,10 +53,11 @@ type HR struct {
 
 // Metric 一个指标（三级）；HasDelta 时其下再挂一个「（变动）」子级
 type Metric struct {
-	Label    string `json:"label"`
-	Value    string `json:"value"`
-	Delta    string `json:"delta"`
-	HasDelta bool   `json:"has_delta"`
+	Label      string `json:"label"`
+	Value      string `json:"value"`
+	Delta      string `json:"delta"`
+	DeltaLabel string `json:"delta_label"`
+	HasDelta   bool   `json:"has_delta"`
 }
 
 // TokenNode 一个令牌节点（二级），含其指标（三级）
@@ -83,7 +84,7 @@ func flatContent(fields []DiffResult) string {
 		}
 		lines = append(lines, "**"+r.Label+"**："+r.Value)
 		if r.IsDiff && r.Delta != "" {
-			lines = append(lines, indent+"└─ "+r.Label+"（变动）："+r.Delta)
+			lines = append(lines, indent+"└─ "+r.Label+"（"+displayDeltaLabel(r.DeltaLabel)+"）："+r.Delta)
 		}
 	}
 	return strings.Join(lines, "\n")
@@ -113,11 +114,18 @@ func treeContent(tokens []TokenNode) string {
 				if metricLast {
 					cont = indent + indent
 				}
-				lines = append(lines, childPrefix+cont+"└─ "+m.Label+"（变动）："+m.Delta)
+				lines = append(lines, childPrefix+cont+"└─ "+m.Label+"（"+displayDeltaLabel(m.DeltaLabel)+"）："+m.Delta)
 			}
 		}
 	}
 	return strings.Join(lines, "\n")
+}
+
+func displayDeltaLabel(label string) string {
+	if label == "" {
+		return "变动"
+	}
+	return label
 }
 
 func sectionContent(sec SectionResult) string {

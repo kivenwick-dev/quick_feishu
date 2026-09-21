@@ -97,7 +97,7 @@ func TestReadAPIsNeverExposePrivateSnapshotData(t *testing.T) {
 				if len(latest.Sections) != 2 {
 					t.Fatalf("sections = %d", len(latest.Sections))
 				}
-				if got := latest.Sections[0].Fields[0]; !got.IsDiff || got.Delta != "+10" {
+				if got := latest.Sections[0].Fields[0]; !got.IsDiff || got.Delta != "-10" || got.DeltaLabel != "消耗" {
 					t.Errorf("account delta missing: %+v", got)
 				}
 				if got := latest.Sections[1].Tokens[0].Metrics[0]; !got.HasDelta || got.Delta != "+5" {

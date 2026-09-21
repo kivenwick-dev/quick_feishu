@@ -267,7 +267,7 @@ func TestRunReportUsesLiveCurrencyValuesButSnapshotDeltas(t *testing.T) {
 	}
 	prev := &model.Snapshot{
 		SnapshotDate: "2026-09-20",
-		AccountQuota: 90000000,
+		AccountQuota: 110000000,
 		AccountUsed:  50000000,
 		AccountRaw:   mustReportJSON(t, map[string]interface{}{"used_quota": float64(50000000)}),
 	}
@@ -279,7 +279,7 @@ func TestRunReportUsesLiveCurrencyValuesButSnapshotDeltas(t *testing.T) {
 		TokenID:    7,
 		TokenName:  "live-key",
 		UsageRaw: mustReportJSON(t, map[string]interface{}{
-			"total_available": float64(1000000),
+			"total_available": float64(2000000),
 			"total_used":      float64(500000),
 			"total_granted":   float64(1500000),
 		}),
@@ -325,10 +325,10 @@ func TestRunReportUsesLiveCurrencyValuesButSnapshotDeltas(t *testing.T) {
 	}
 	for _, want := range []string{
 		"已用配额", "80000000", "+30000000",
-		"当前余额", "$400.00", "+$20.00",
+		"当前余额", "$400.00", "当前余额（消耗）：+$20.00",
 		"历史消耗", "$240.00", "+$60.00",
 		"live-key",
-		"可用总量", "$4.00", "+$1.00",
+		"可用总量", "$4.00", "可用总量（消耗）：+$1.00",
 		"累计已用", "$3.00", "+$1.00",
 		"授予总量", "$7.00", "+$2.00",
 	} {
