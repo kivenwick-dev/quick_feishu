@@ -213,7 +213,12 @@ func TestRunReportUsesLiveCurrencyValuesButSnapshotDeltas(t *testing.T) {
 		case "/api/status":
 			_, _ = w.Write([]byte(`{"data":{"quota_per_unit":500000,"display_in_currency":true},"success":true}`))
 		case "/api/token/":
-			_, _ = w.Write([]byte(`{"data":{"page":1,"page_size":100,"total":0,"items":[]},"success":true}`))
+			_, _ = w.Write([]byte(`{"data":{"page":1,"page_size":100,"total":1,"items":[{"id":7,"key":"token-key","name":"live-key"}]},"success":true}`))
+		case "/api/usage/token/":
+			if r.Header.Get("Authorization") != "Bearer token-key" {
+				t.Fatalf("usage Authorization = %q", r.Header.Get("Authorization"))
+			}
+			_, _ = w.Write([]byte(`{"data":{"name":"live-key","total_available":2000000,"total_used":1500000,"total_granted":3500000},"success":true}`))
 		case "/hook":
 			body, _ := io.ReadAll(r.Body)
 			webhookBody = string(body)
@@ -241,6 +246,16 @@ func TestRunReportUsesLiveCurrencyValuesButSnapshotDeltas(t *testing.T) {
 					map[string]interface{}{"field": "used_usd", "diff": true},
 				},
 			},
+			map[string]interface{}{
+				"section":   "各令牌用量",
+				"source":    "usage",
+				"per_token": true,
+				"fields": []interface{}{
+					map[string]interface{}{"field": "total_available", "diff": true},
+					map[string]interface{}{"field": "total_used", "diff": true},
+					map[string]interface{}{"field": "total_granted", "diff": true},
+				},
+			},
 		},
 	}
 	a, err := New(cfg, t.TempDir(), filepath.Join(t.TempDir(), "config.yaml"))
@@ -250,19 +265,45 @@ func TestRunReportUsesLiveCurrencyValuesButSnapshotDeltas(t *testing.T) {
 	if err := db.SeedDicts(a.DB()); err != nil {
 		t.Fatal(err)
 	}
-	if err := a.DB().Create(&model.Snapshot{
+	prev := &model.Snapshot{
 		SnapshotDate: "2026-09-20",
 		AccountQuota: 90000000,
 		AccountUsed:  50000000,
 		AccountRaw:   mustReportJSON(t, map[string]interface{}{"used_quota": float64(50000000)}),
+	}
+	if err := a.DB().Create(prev).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := a.DB().Create(&model.TokenSnapshot{
+		SnapshotID: prev.ID,
+		TokenID:    7,
+		TokenName:  "live-key",
+		UsageRaw: mustReportJSON(t, map[string]interface{}{
+			"total_available": float64(1000000),
+			"total_used":      float64(500000),
+			"total_granted":   float64(1500000),
+		}),
 	}).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := a.DB().Create(&model.Snapshot{
+	latestSnap := &model.Snapshot{
 		SnapshotDate: "2026-09-21",
 		AccountQuota: 100000000,
 		AccountUsed:  80000000,
 		AccountRaw:   mustReportJSON(t, map[string]interface{}{"used_quota": float64(80000000)}),
+	}
+	if err := a.DB().Create(latestSnap).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := a.DB().Create(&model.TokenSnapshot{
+		SnapshotID: latestSnap.ID,
+		TokenID:    7,
+		TokenName:  "live-key",
+		UsageRaw: mustReportJSON(t, map[string]interface{}{
+			"total_available": float64(1500000),
+			"total_used":      float64(1000000),
+			"total_granted":   float64(2500000),
+		}),
 	}).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -286,6 +327,10 @@ func TestRunReportUsesLiveCurrencyValuesButSnapshotDeltas(t *testing.T) {
 		"已用配额", "80000000", "+30000000",
 		"当前余额", "$400.00", "+$20.00",
 		"历史消耗", "$240.00", "+$60.00",
+		"live-key",
+		"可用总量", "$4.00", "+$1.00",
+		"累计已用", "$3.00", "+$1.00",
+		"授予总量", "$7.00", "+$2.00",
 	} {
 		if !strings.Contains(webhookBody, want) {
 			t.Fatalf("report missing %q in body: %s", want, webhookBody)

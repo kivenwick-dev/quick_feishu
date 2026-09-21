@@ -149,20 +149,49 @@ func (a *App) RunReport() (*model.SendLog, error) {
 	if tmpl == nil {
 		tmpl = report.DefaultTemplate()
 	}
-	return report.ExecuteReportWithAccountOverrides(deps.gdb, latest, prev, tmpl, deps.webhookURL, deps.retryTimes, liveAccountOverrides(deps.client))
+	accountOverrides, tokenOverrides, quotaPerUnit := liveReportOverrides(deps.client)
+	return report.ExecuteReportWithOverrides(deps.gdb, latest, prev, tmpl, deps.webhookURL, deps.retryTimes, accountOverrides, tokenOverrides, quotaPerUnit)
 }
 
-func liveAccountOverrides(client *api.Client) map[string]interface{} {
+func liveReportOverrides(client *api.Client) (map[string]interface{}, map[int]map[string]interface{}, int64) {
 	account, _, accountErr := client.GetAccount()
 	status, statusErr := client.GetStatus()
 	if accountErr != nil || statusErr != nil || account == nil || status == nil || status.QuotaPerUnit <= 0 {
-		return nil
+		return nil, nil, 0
 	}
 	rate := float64(status.QuotaPerUnit)
-	return map[string]interface{}{
+	accountOverrides := map[string]interface{}{
 		"balance_usd": float64(account.Quota) / rate,
 		"used_usd":    float64(account.UsedQuota) / rate,
 	}
+	tokenOverrides := liveTokenOverrides(client)
+	return accountOverrides, tokenOverrides, status.QuotaPerUnit
+}
+
+func liveTokenOverrides(client *api.Client) map[int]map[string]interface{} {
+	list, _, err := client.GetTokenList()
+	if err != nil || list == nil {
+		return nil
+	}
+	out := map[int]map[string]interface{}{}
+	for _, item := range list.Items {
+		if item.Key == "" {
+			continue
+		}
+		usage, _, err := client.GetTokenUsage(item.Key)
+		if err != nil || usage == nil {
+			continue
+		}
+		out[item.ID] = map[string]interface{}{
+			"total_available": usage.TotalAvailable,
+			"total_used":      usage.TotalUsed,
+			"total_granted":   usage.TotalGranted,
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // Backfill 启动补采缺失的历史快照

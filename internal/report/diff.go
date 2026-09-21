@@ -15,6 +15,10 @@ func isUSDField(path string) bool {
 	return path == "balance_usd" || path == "used_usd"
 }
 
+func isTokenUSDField(path string) bool {
+	return path == "total_available" || path == "total_used" || path == "total_granted"
+}
+
 func snapshotAccountField(s *model.Snapshot, path string) (interface{}, bool) {
 	if s == nil {
 		return nil, false
@@ -127,6 +131,24 @@ func DiffFieldDisplayValue(field, label string, displayVal, lateDeltaVal, earlyV
 	return res
 }
 
+func DiffTokenUSDDisplayValue(field, label string, displayVal, lateQuotaVal, earlyQuotaVal interface{}, quotaPerUnit int64, wantDiff bool) DiffResult {
+	if !isTokenUSDField(field) || quotaPerUnit <= 0 {
+		return DiffValue(label, displayVal, earlyQuotaVal, wantDiff)
+	}
+	rate := float64(quotaPerUnit)
+	res := DiffResult{Label: label, Value: formatUSDValue(displayVal, rate)}
+	if !wantDiff {
+		return res
+	}
+	ln, lok := toFloat(lateQuotaVal)
+	en, eok := toFloat(earlyQuotaVal)
+	if lok && eok {
+		res.Delta = signedFieldNum("balance_usd", (ln-en)/rate)
+		res.IsDiff = true
+	}
+	return res
+}
+
 // signedNum 带符号格式化：正数加 +，负数自带 -，0 显示 0
 func signedNum(f float64) string {
 	if f > 0 {
@@ -197,6 +219,14 @@ func formatFieldVal(field string, v interface{}) string {
 		return "-"
 	}
 	return formatUSD(f)
+}
+
+func formatUSDValue(v interface{}, quotaPerUnit float64) string {
+	f, ok := toFloat(v)
+	if !ok || quotaPerUnit <= 0 {
+		return "-"
+	}
+	return formatUSD(f / quotaPerUnit)
 }
 
 func formatUSD(f float64) string {

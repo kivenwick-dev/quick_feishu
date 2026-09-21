@@ -53,6 +53,12 @@ func BuildSections(gdb *gorm.DB, latest, prev *model.Snapshot, tmpl *Template) [
 // BuildSectionsWithAccountOverrides 按模板组装分区结果，可对账号展示值做运行时覆盖。
 // 覆盖值只影响字段展示；差值仍使用 latest 与 prev 快照计算。
 func BuildSectionsWithAccountOverrides(gdb *gorm.DB, latest, prev *model.Snapshot, tmpl *Template, accountOverrides map[string]interface{}) []SectionResult {
+	return BuildSectionsWithOverrides(gdb, latest, prev, tmpl, accountOverrides, nil, 0)
+}
+
+// BuildSectionsWithOverrides 按模板组装分区结果，可覆盖账号与令牌展示值。
+// 覆盖值只影响字段展示；差值仍使用 latest 与 prev 快照计算。
+func BuildSectionsWithOverrides(gdb *gorm.DB, latest, prev *model.Snapshot, tmpl *Template, accountOverrides map[string]interface{}, tokenOverrides map[int]map[string]interface{}, quotaPerUnit int64) []SectionResult {
 	accountLabels := db.DictLabels(gdb, "account")
 	usageLabels := db.DictLabels(gdb, "usage")
 	tokenLabels := db.DictLabels(gdb, "token")
@@ -114,6 +120,14 @@ func BuildSectionsWithAccountOverrides(gdb *gorm.DB, latest, prev *model.Snapsho
 					if !ok {
 						continue
 					}
+					displayVal := lateVal
+					if isTokenUSDField(f.Field) && tokenOverrides != nil {
+						if byField, ok := tokenOverrides[tok.TokenID]; ok {
+							if override, ok := byField[f.Field]; ok {
+								displayVal = override
+							}
+						}
+					}
 					var earlyVal interface{}
 					if pt != nil {
 						earlyVal, _ = extractTokenField(*pt, f.Field)
@@ -122,7 +136,7 @@ func BuildSectionsWithAccountOverrides(gdb *gorm.DB, latest, prev *model.Snapsho
 					if usageLabels[f.Field] == "" {
 						label = labelOf(tokenLabels, f.Field)
 					}
-					res := DiffValue(label, lateVal, earlyVal, f.Diff)
+					res := DiffTokenUSDDisplayValue(f.Field, label, displayVal, lateVal, earlyVal, quotaPerUnit, f.Diff)
 					node.Metrics = append(node.Metrics, Metric{
 						Label:    res.Label,
 						Value:    res.Value,
@@ -147,10 +161,14 @@ func ExecuteReport(gdb *gorm.DB, latest, prev *model.Snapshot, tmpl *Template, w
 }
 
 func ExecuteReportWithAccountOverrides(gdb *gorm.DB, latest, prev *model.Snapshot, tmpl *Template, webhookURL string, retryTimes int, accountOverrides map[string]interface{}) (*model.SendLog, error) {
+	return ExecuteReportWithOverrides(gdb, latest, prev, tmpl, webhookURL, retryTimes, accountOverrides, nil, 0)
+}
+
+func ExecuteReportWithOverrides(gdb *gorm.DB, latest, prev *model.Snapshot, tmpl *Template, webhookURL string, retryTimes int, accountOverrides map[string]interface{}, tokenOverrides map[int]map[string]interface{}, quotaPerUnit int64) (*model.SendLog, error) {
 	if latest == nil {
 		return nil, fmt.Errorf("no snapshots yet")
 	}
-	sections := BuildSectionsWithAccountOverrides(gdb, latest, prev, tmpl, accountOverrides)
+	sections := BuildSectionsWithOverrides(gdb, latest, prev, tmpl, accountOverrides, tokenOverrides, quotaPerUnit)
 	card, err := BuildCard(tmpl, latest.SnapshotDate, sections)
 	if err != nil {
 		return nil, err
