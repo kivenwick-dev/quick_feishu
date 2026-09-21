@@ -13,6 +13,11 @@ RUN mkdir -p internal/server/web && cd frontend && npm run build
 FROM golang:1.26.4-alpine AS backend-builder
 WORKDIR /src
 
+ARG GOPROXY=https://goproxy.cn,direct
+ARG GOSUMDB=sum.golang.google.cn
+ENV GOPROXY=${GOPROXY} \
+    GOSUMDB=${GOSUMDB}
+
 RUN apk add --no-cache ca-certificates
 
 COPY go.mod go.sum ./
@@ -20,7 +25,8 @@ RUN --mount=type=cache,target=/go/pkg/mod go mod download
 
 COPY . .
 COPY --from=frontend-builder /src/internal/server/web ./internal/server/web
-RUN --mount=type=cache,target=/root/.cache/go-build \
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/quick-feishu .
 
 FROM alpine:3.22 AS runtime

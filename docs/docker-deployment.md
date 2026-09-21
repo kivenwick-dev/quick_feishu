@@ -53,6 +53,15 @@ QF_PORT=8080
 docker compose up -d --build
 ```
 
+Dockerfile 默认使用 `https://goproxy.cn,direct` 下载 Go 依赖，并在依赖下载和编译两步复用 BuildKit 模块缓存，避免 `go build` 阶段反复访问 `proxy.golang.org` 导致超时。如果服务器有自己的 Go 代理，可以覆盖构建参数：
+
+```bash
+docker compose build \
+  --build-arg GOPROXY=https://goproxy.cn,direct \
+  --build-arg GOSUMDB=sum.golang.google.cn
+docker compose up -d
+```
+
 查看状态和日志：
 
 ```bash
@@ -145,6 +154,8 @@ docker compose build --pull
 docker compose up -d
 docker compose ps
 ```
+
+如果构建日志卡在 `go: downloading` 或 `go build` 下载依赖，请优先确认服务器能访问当前 `GOPROXY`。国内服务器通常保持默认值即可；内网环境可以把 `GOPROXY` 改成公司私有代理。
 
 新容器会继续挂载原有配置卷和数据卷。应用启动时会自动执行数据库结构迁移。
 
