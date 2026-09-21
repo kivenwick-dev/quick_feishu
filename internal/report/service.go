@@ -118,6 +118,11 @@ func BuildSectionsWithOverrides(gdb *gorm.DB, latest, prev *model.Snapshot, tmpl
 					pt = &p
 				}
 				node := TokenNode{Name: tok.TokenName}
+				if tokenUnlimited(tok, tokenOverrides) {
+					node.Metrics = append(node.Metrics, Metric{Label: "无限配额", Value: "true"})
+					s.Tokens = append(s.Tokens, node)
+					continue
+				}
 				hasRemainingPercent := false
 				for _, f := range sec.Fields {
 					if f.Field == "" || f.Field == "name" || f.Field == "unlimited_quota" {
@@ -200,18 +205,29 @@ func remainingPercentMetric(tok model.TokenSnapshot, tokenOverrides map[int]map[
 
 func tokenUnlimited(tok model.TokenSnapshot, tokenOverrides map[int]map[string]interface{}) bool {
 	v, ok := tokenDisplayValue(tok, "unlimited_quota", tokenOverrides)
+	if ok {
+		switch t := v.(type) {
+		case bool:
+			if t {
+				return true
+			}
+		case string:
+			if t == "true" || t == "1" {
+				return true
+			}
+		default:
+			f, ok := toFloat(t)
+			if ok && f != 0 {
+				return true
+			}
+		}
+	}
+	available, ok := tokenDisplayValue(tok, "total_available", tokenOverrides)
 	if !ok {
 		return false
 	}
-	switch t := v.(type) {
-	case bool:
-		return t
-	case string:
-		return t == "true" || t == "1"
-	default:
-		f, ok := toFloat(t)
-		return ok && f != 0
-	}
+	availableNum, ok := toFloat(available)
+	return ok && availableNum < 0
 }
 
 func tokenDisplayValue(tok model.TokenSnapshot, field string, tokenOverrides map[int]map[string]interface{}) (interface{}, bool) {

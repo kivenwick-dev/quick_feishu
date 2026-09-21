@@ -263,7 +263,7 @@ func TestBuildSectionsRemainingPercentUsesLiveOverrides(t *testing.T) {
 	}
 }
 
-func TestBuildSectionsSkipsUnlimitedQuotaAndInvalidRemainingPercent(t *testing.T) {
+func TestBuildSectionsUnlimitedTokenShowsOnlyUnlimitedQuota(t *testing.T) {
 	gdb, err := db.Init(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -291,13 +291,39 @@ func TestBuildSectionsSkipsUnlimitedQuotaAndInvalidRemainingPercent(t *testing.T
 	}}
 	secs := BuildSections(gdb, latest, nil, tmpl)
 	metrics := secs[0].Tokens[0].Metrics
-	for _, metric := range metrics {
-		if metric.Label == "无限配额" || metric.Label == "剩余用量" {
-			t.Fatalf("unlimited token should hide unlimited_quota and remaining percent, got %+v", metrics)
-		}
+	if len(metrics) != 1 || metrics[0].Label != "无限配额" || metrics[0].Value != "true" {
+		t.Fatalf("unlimited token should only show unlimited quota, got %+v", metrics)
 	}
-	if len(metrics) != 3 {
-		t.Fatalf("metrics = %d, want 3 monetary metrics only: %+v", len(metrics), metrics)
+}
+
+func TestBuildSectionsNegativeAvailableDetectsUnlimitedToken(t *testing.T) {
+	gdb, err := db.Init(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.SeedDicts(gdb)
+
+	latest := &model.Snapshot{SnapshotDate: "2026-09-18", AccountRaw: mustJSON(t, map[string]interface{}{})}
+	gdb.Create(latest)
+	gdb.Create(&model.TokenSnapshot{SnapshotID: latest.ID, TokenID: 1, TokenName: "negative-available",
+		UsageRaw: mustJSON(t, map[string]interface{}{
+			"total_available": float64(-1000),
+			"total_used":      float64(1000),
+			"total_granted":   float64(0),
+			"unlimited_quota": false,
+		})})
+
+	tmpl := &Template{Sections: []Section{
+		{Name: "用量", Source: "usage", PerToken: true, Fields: []Field{
+			{Field: "total_available"},
+			{Field: "total_used"},
+			{Field: "total_granted"},
+		}},
+	}}
+	secs := BuildSections(gdb, latest, nil, tmpl)
+	metrics := secs[0].Tokens[0].Metrics
+	if len(metrics) != 1 || metrics[0].Label != "无限配额" || metrics[0].Value != "true" {
+		t.Fatalf("negative available token should be treated as unlimited, got %+v", metrics)
 	}
 }
 
