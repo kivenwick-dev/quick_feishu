@@ -19,9 +19,30 @@ func isTokenUSDField(path string) bool {
 	return path == "total_available" || path == "total_used" || path == "total_granted"
 }
 
+func tokenUSDSourceField(path string) (string, bool) {
+	switch path {
+	case "total_available_usd":
+		return "total_available", true
+	case "total_used_usd":
+		return "total_used", true
+	case "total_granted_usd":
+		return "total_granted", true
+	default:
+		return "", false
+	}
+}
+
+func isCurrencyField(path string) bool {
+	if isUSDField(path) {
+		return true
+	}
+	_, ok := tokenUSDSourceField(path)
+	return ok
+}
+
 func isConsumptionDeltaField(path string) bool {
 	switch path {
-	case "quota", "balance_usd", "total_available", "remain_quota":
+	case "quota", "balance_usd", "total_available", "total_available_usd", "remain_quota":
 		return true
 	default:
 		return false
@@ -207,7 +228,7 @@ func signedNum(f float64) string {
 }
 
 func signedFieldNum(field string, f float64) string {
-	if !isUSDField(field) {
+	if !isCurrencyField(field) {
 		return signedNum(f)
 	}
 	return signedCurrencyDelta(f / quotaPerUSD)
@@ -264,7 +285,7 @@ func formatVal(v interface{}) string {
 }
 
 func formatFieldVal(field string, v interface{}) string {
-	if !isUSDField(field) {
+	if !isCurrencyField(field) {
 		return formatVal(v)
 	}
 	f, ok := toFloat(v)

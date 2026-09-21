@@ -79,6 +79,34 @@ func dictHistoryFields(gdb *gorm.DB, source string) []HistoryField {
 	return out
 }
 
+func withUsageCurrencyFields(fields []HistoryField) []HistoryField {
+	type derived struct {
+		source string
+		path   string
+		label  string
+	}
+	derivedFields := []derived{
+		{source: "total_available", path: "total_available_usd", label: "可用总量（金额）"},
+		{source: "total_used", path: "total_used_usd", label: "累计已用（金额）"},
+		{source: "total_granted", path: "total_granted_usd", label: "授予总量（金额）"},
+	}
+	seen := map[string]bool{}
+	for _, f := range fields {
+		seen[f.Path] = true
+	}
+	out := make([]HistoryField, 0, len(fields)+len(derivedFields))
+	for _, f := range fields {
+		out = append(out, f)
+		for _, d := range derivedFields {
+			if f.Path == d.source && !seen[d.path] {
+				out = append(out, HistoryField{Path: d.path, Label: d.label})
+				seen[d.path] = true
+			}
+		}
+	}
+	return out
+}
+
 func fillRow(fields []HistoryField, get func(string) (interface{}, bool), prev map[string]interface{}) (HistoryRow, map[string]interface{}) {
 	row := HistoryRow{Values: map[string]string{}, Deltas: map[string]string{}}
 	cur := map[string]interface{}{}
@@ -195,13 +223,16 @@ func BuildUsageHistory(gdb *gorm.DB, tokenID int, limit int) *History {
 		}
 	}
 	dict := append(dictHistoryFields(gdb, "usage"), dictHistoryFields(gdb, "token")...)
-	fields := buildFields(dict, raws)
+	fields := withUsageCurrencyFields(buildFields(dict, raws))
 
 	h := &History{Source: "usage", Fields: fields, Rows: []HistoryRow{}}
 	var prev map[string]interface{}
 	for _, e := range entries {
 		ent := e
 		row, cur := fillRow(fields, func(path string) (interface{}, bool) {
+			if source, ok := tokenUSDSourceField(path); ok {
+				return extractTokenField(ent.tok, source)
+			}
 			return extractTokenField(ent.tok, path)
 		}, prev)
 		row.ID = e.sid

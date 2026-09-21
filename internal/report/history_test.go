@@ -76,9 +76,9 @@ func TestBuildUsageHistory(t *testing.T) {
 	gdb.Create(s1)
 	gdb.Create(s2)
 	gdb.Create(&model.TokenSnapshot{SnapshotID: s1.ID, TokenID: 7, TokenName: "claude",
-		UsageRaw: mustJSON(t, map[string]interface{}{"total_used": float64(10), "total_granted": float64(100)})})
+		UsageRaw: mustJSON(t, map[string]interface{}{"total_available": float64(45000000), "total_used": float64(10), "total_granted": float64(100000000)})})
 	gdb.Create(&model.TokenSnapshot{SnapshotID: s2.ID, TokenID: 7, TokenName: "claude",
-		UsageRaw: mustJSON(t, map[string]interface{}{"total_used": float64(30), "total_granted": float64(100)})})
+		UsageRaw: mustJSON(t, map[string]interface{}{"total_available": float64(40000000), "total_used": float64(30), "total_granted": float64(100000000)})})
 
 	h := BuildUsageHistory(gdb, 7, 30)
 	if len(h.Rows) != 2 {
@@ -87,9 +87,21 @@ func TestBuildUsageHistory(t *testing.T) {
 	if h.Rows[1].Values["total_used"] != "30" || h.Rows[1].Deltas["total_used"] != "+20" {
 		t.Errorf("bad last row: %+v", h.Rows[1])
 	}
+	if h.Rows[1].Values["total_available_usd"] != "$80.00" || h.Rows[1].Values["total_granted_usd"] != "$200.00" {
+		t.Errorf("missing usage currency values: %+v", h.Rows[1].Values)
+	}
 	// total_granted 无变化 → +0
 	if h.Rows[1].Deltas["total_granted"] != "0" {
 		t.Errorf("granted delta = %q, want 0", h.Rows[1].Deltas["total_granted"])
+	}
+	var foundUSD bool
+	for _, f := range h.Fields {
+		if f.Path == "total_available_usd" && f.Label == "可用总量（金额）" {
+			foundUSD = true
+		}
+	}
+	if !foundUSD {
+		t.Errorf("usage currency field missing: %+v", h.Fields)
 	}
 }
 

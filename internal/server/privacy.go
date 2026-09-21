@@ -18,7 +18,7 @@ func publicMetricFields(source string) []string {
 	case "account":
 		return []string{"quota", "used_quota", "balance_usd", "used_usd", "request_count", "aff_count", "aff_quota", "aff_history_quota", "top_up_rebate_count", "withdrawn_quota", "invoice_returned_quota", "support_ticket_cap"}
 	case "usage", "token":
-		return []string{"total_available", "total_granted", "total_used", "remaining_percent", "used_quota", "remain_quota"}
+		return []string{"total_available", "total_available_usd", "total_granted", "total_granted_usd", "total_used", "total_used_usd", "remaining_percent", "used_quota", "remain_quota"}
 	}
 	return nil
 }
@@ -50,10 +50,22 @@ func currencyValue(value string) bool {
 
 func publicMetricValue(field, value string) bool {
 	switch field {
-	case "balance_usd", "used_usd":
+	case "balance_usd", "used_usd", "total_available_usd", "total_granted_usd", "total_used_usd":
 		return currencyValue(value)
 	default:
 		return numericValue(value)
+	}
+}
+
+func metricDisplayValue(value string) bool {
+	return publicMetricValue("balance_usd", value) || numericValue(value) || value == "true" || value == "false"
+}
+
+func enablePublicCurrency(f *report.Field) {
+	switch f.Field {
+	case "balance_usd", "used_usd", "total_available", "total_granted", "total_used":
+		on := true
+		f.Currency = &on
 	}
 }
 
@@ -90,6 +102,7 @@ func publicTemplate(t *report.Template) *report.Template {
 		for _, f := range s.Fields {
 			if publicMetric(s.Source, f.Field) {
 				f.Diff = true // 看板的统计指标始终计算增减，不依赖日报模板开关。
+				enablePublicCurrency(&f)
 				section.Fields = append(section.Fields, f)
 			}
 		}
@@ -100,7 +113,9 @@ func publicTemplate(t *report.Template) *report.Template {
 		}
 		for _, field := range publicMetricFields(s.Source) {
 			if !seen[field] {
-				section.Fields = append(section.Fields, report.Field{Field: field, Diff: true})
+				f := report.Field{Field: field, Diff: true}
+				enablePublicCurrency(&f)
+				section.Fields = append(section.Fields, f)
 			}
 		}
 		out.Sections = append(out.Sections, section)

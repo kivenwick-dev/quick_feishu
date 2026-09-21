@@ -110,7 +110,7 @@ func (h *Handlers) GetLatest(c *gin.Context) {
 		for j := range sections[i].Tokens {
 			for k := range sections[i].Tokens[j].Metrics {
 				m := &sections[i].Tokens[j].Metrics[k]
-				if !numericValue(m.Value) {
+				if !metricDisplayValue(m.Value) {
 					m.Value = "—"
 				}
 			}

@@ -41,7 +41,7 @@ func TestReadAPIsNeverExposePrivateSnapshotData(t *testing.T) {
 		if err := h.App.DB().Create(&snap).Error; err != nil {
 			t.Fatal(err)
 		}
-		tok := model.TokenSnapshot{SnapshotID: snap.ID, TokenID: 123, TokenName: "测试令牌名称", UsageRaw: datatypes.JSON(fmt.Sprintf(`{"total_used":%d,"model_limits":{"secret":"PRIVATE_MODEL"}}`, i*5)), ListRaw: datatypes.JSON(`{"key":"PRIVATE_TOKEN_KEY"}`)}
+		tok := model.TokenSnapshot{SnapshotID: snap.ID, TokenID: 123, TokenName: "测试令牌名称", UsageRaw: datatypes.JSON(fmt.Sprintf(`{"total_available":%d,"total_granted":1000000,"total_used":%d,"model_limits":{"secret":"PRIVATE_MODEL"}}`, 1000000-i*500000, i*500000)), ListRaw: datatypes.JSON(`{"key":"PRIVATE_TOKEN_KEY"}`)}
 		if err := h.App.DB().Create(&tok).Error; err != nil {
 			t.Fatal(err)
 		}
@@ -81,7 +81,7 @@ func TestReadAPIsNeverExposePrivateSnapshotData(t *testing.T) {
 				}
 				key, want := "quota", "+10"
 				if hist.Source == "usage" {
-					key, want = "total_used", "+5"
+					key, want = "total_used", "+500000"
 				}
 				if hist.Rows[1].Deltas[key] != want {
 					t.Errorf("delta = %q", hist.Rows[1].Deltas[key])
@@ -100,7 +100,7 @@ func TestReadAPIsNeverExposePrivateSnapshotData(t *testing.T) {
 				if got := latest.Sections[0].Fields[0]; !got.IsDiff || got.Delta != "-10" || got.DeltaLabel != "消耗" {
 					t.Errorf("account delta missing: %+v", got)
 				}
-				if got := latest.Sections[1].Tokens[0].Metrics[0]; !got.HasDelta || got.Delta != "+5" {
+				if got := latest.Sections[1].Tokens[0].Metrics[0]; !got.HasDelta || got.Value != "$2.00" || got.Delta != "+$1.00" {
 					t.Errorf("token delta missing: %+v", got)
 				}
 			}
