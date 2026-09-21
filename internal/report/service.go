@@ -120,7 +120,7 @@ func BuildSectionsWithOverrides(gdb *gorm.DB, latest, prev *model.Snapshot, tmpl
 				node := TokenNode{Name: tok.TokenName}
 				hasRemainingPercent := false
 				for _, f := range sec.Fields {
-					if f.Field == "" || f.Field == "name" {
+					if f.Field == "" || f.Field == "name" || f.Field == "unlimited_quota" {
 						continue // name 用作二级节点标题，不再作为指标
 					}
 					if f.Field == remainingPercentField {
@@ -175,6 +175,9 @@ func BuildSectionsWithOverrides(gdb *gorm.DB, latest, prev *model.Snapshot, tmpl
 }
 
 func remainingPercentMetric(tok model.TokenSnapshot, tokenOverrides map[int]map[string]interface{}) (Metric, bool) {
+	if tokenUnlimited(tok, tokenOverrides) {
+		return Metric{}, false
+	}
 	available, ok := tokenDisplayValue(tok, "total_available", tokenOverrides)
 	if !ok {
 		return Metric{}, false
@@ -188,11 +191,27 @@ func remainingPercentMetric(tok model.TokenSnapshot, tokenOverrides map[int]map[
 		return Metric{}, false
 	}
 	grantedNum, ok := toFloat(granted)
-	if !ok || grantedNum == 0 {
+	if !ok || grantedNum <= 0 {
 		return Metric{}, false
 	}
 	percent := int(math.Round(availableNum / grantedNum * 100))
 	return Metric{Label: "剩余用量", Value: fmt.Sprintf("%d%%", percent)}, true
+}
+
+func tokenUnlimited(tok model.TokenSnapshot, tokenOverrides map[int]map[string]interface{}) bool {
+	v, ok := tokenDisplayValue(tok, "unlimited_quota", tokenOverrides)
+	if !ok {
+		return false
+	}
+	switch t := v.(type) {
+	case bool:
+		return t
+	case string:
+		return t == "true" || t == "1"
+	default:
+		f, ok := toFloat(t)
+		return ok && f != 0
+	}
 }
 
 func tokenDisplayValue(tok model.TokenSnapshot, field string, tokenOverrides map[int]map[string]interface{}) (interface{}, bool) {

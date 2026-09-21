@@ -185,6 +185,7 @@ func liveTokenOverrides(client *api.Client) map[int]map[string]interface{} {
 			"total_available": usage.TotalAvailable,
 			"total_used":      usage.TotalUsed,
 			"total_granted":   usage.TotalGranted,
+			"unlimited_quota": usage.UnlimitedQuota,
 		}
 	}
 	if len(out) == 0 {
