@@ -45,13 +45,14 @@
         </el-radio-group>
 
         <el-select
-          v-model="visibleFields"
+          :model-value="visibleFields"
           class="field-selector"
           multiple
           collapse-tags
           collapse-tags-tooltip
           placeholder="显示字段"
           style="width: 300px"
+          @update:model-value="updateVisibleFields"
           @change="rememberVisibleFields"
         >
           <el-option v-for="f in fieldOptions" :key="f.path" :value="f.path" :label="f.label || f.path" />
@@ -100,6 +101,7 @@ import api from '../api'
 import MetricCard from '../components/MetricCard.vue'
 import { formatSnapshotTime } from '../snapshotTime'
 import { negativeQuotaNote } from '../metricNotes'
+import { appendSelectedValues } from '../selectionOrder'
 
 const source = ref<'account' | 'usage'>('account')
 const tokenId = ref<number | undefined>(undefined)
@@ -191,6 +193,10 @@ function selectionKey() {
 function rememberVisibleFields() {
   fieldSelections.set(selectionKey(), [...visibleFields.value])
   saveFieldSelections()
+}
+
+function updateVisibleFields(next: string[]) {
+  visibleFields.value = appendSelectedValues(visibleFields.value, next)
 }
 
 const filteredRows = computed(() => {

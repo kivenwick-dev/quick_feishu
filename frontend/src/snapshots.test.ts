@@ -100,13 +100,15 @@ describe('snapshot history', () => {
     await flushPromises()
     const selector = wrapper.findComponent('.field-selector') as VueWrapper<any>
 
-    selector.vm.$emit('update:modelValue', ['quota', 'used'])
-    selector.vm.$emit('change', ['quota', 'used'])
+    selector.vm.$emit('update:modelValue', ['used'])
+    await flushPromises()
+    selector.vm.$emit('update:modelValue', ['used', 'quota'])
+    selector.vm.$emit('change', ['used', 'quota'])
     await flushPromises()
 
     expect(wrapper.findAll('.mcard').map((card) => card.text())).toEqual([
-      expect.stringContaining('总额'),
       expect.stringContaining('已用'),
+      expect.stringContaining('总额'),
     ])
     wrapper.unmount()
   })

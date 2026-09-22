@@ -21,12 +21,13 @@
           @change="onUsageCurrencyChange"
         />
         <el-select
-          v-model="visibleMetricKeys"
+          :model-value="visibleMetricKeys"
           class="metric-selector"
           multiple
           collapse-tags
           collapse-tags-tooltip
           placeholder="选择要显示的指标"
+          @update:model-value="updateVisibleMetricKeys"
           @change="saveMetricSelection"
         >
           <el-option
@@ -135,6 +136,7 @@ import CollectionIssuesDialog from '../components/CollectionIssuesDialog.vue'
 import type { Issue } from '../collectionIssues'
 import MetricCard from '../components/MetricCard.vue'
 import { negativeQuotaNote } from '../metricNotes'
+import { appendSelectedValues } from '../selectionOrder'
 
 const date = ref<string | null>(null)
 const liveBilling = ref<any | null>(null)
@@ -181,6 +183,10 @@ function saveMetricSelection() {
   } catch {
     // Browsers may disable local storage; filtering still works for the current visit.
   }
+}
+
+function updateVisibleMetricKeys(next: string[]) {
+  visibleMetricKeys.value = appendSelectedValues(visibleMetricKeys.value, next)
 }
 
 function saveUsageCurrency() {
