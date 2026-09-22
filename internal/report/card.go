@@ -193,12 +193,6 @@ func BuildCard(tmpl *Template, date string, sections []SectionResult) (*Card, er
 			Elements: []interface{}{},
 		},
 	}
-	if note := strings.TrimSpace(tmpl.AlgorithmNoteText()); note != "" {
-		card.Card.Elements = append(card.Card.Elements, DivText{
-			Tag:  "div",
-			Text: CardText{Tag: "lark_md", Content: algorithmContent(note)},
-		})
-	}
 	first := true
 	for _, sec := range sections {
 		if !hasContent(sec) {
@@ -220,6 +214,15 @@ func BuildCard(tmpl *Template, date string, sections []SectionResult) (*Card, er
 				Text: CardText{Tag: "lark_md", Content: chunk},
 			})
 		}
+	}
+	if note := strings.TrimSpace(tmpl.AlgorithmNoteText()); note != "" {
+		if !first {
+			card.Card.Elements = append(card.Card.Elements, HR{Tag: "hr"})
+		}
+		card.Card.Elements = append(card.Card.Elements, DivText{
+			Tag:  "div",
+			Text: CardText{Tag: "lark_md", Content: algorithmContent(note)},
+		})
 	}
 	return card, nil
 }

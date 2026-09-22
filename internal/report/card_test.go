@@ -83,6 +83,29 @@ func TestBuildCardUsesCustomAlgorithmNote(t *testing.T) {
 	}
 }
 
+func TestBuildCardPlacesAlgorithmNoteAfterData(t *testing.T) {
+	note := "说明放在数据之后"
+	card, err := BuildCard(&Template{Title: "日报", AlgorithmNote: &note}, "2026-09-22", []SectionResult{
+		{Name: "账号情况", Fields: []DiffResult{{Field: "balance_usd", Label: "当前余额", Value: "$1.00"}}},
+		{Name: "令牌使用情况", Tokens: []TokenNode{{Name: "token-a", Metrics: []Metric{{Label: "累计已用", Value: "$2.00"}}}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var contents []string
+	for _, element := range card.Card.Elements {
+		if div, ok := element.(DivText); ok {
+			contents = append(contents, div.Text.Content)
+		}
+	}
+	if len(contents) == 0 || !strings.Contains(contents[len(contents)-1], "算法说明") {
+		t.Fatalf("algorithm note must be the last content block: %v", contents)
+	}
+	if !strings.Contains(contents[0], "账号情况") {
+		t.Fatalf("first content block must start with data: %v", contents)
+	}
+}
+
 func TestBuildCardSkipsEmptySections(t *testing.T) {
 	tmpl := DefaultTemplate()
 	sections := []SectionResult{
