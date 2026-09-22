@@ -172,14 +172,14 @@ function currencyPath(path: string) {
 const fieldOptions = computed(() => allFields.value.filter((f: any) => selectablePath(f.path)))
 
 const shownFields = computed(() => {
-  const set = new Set(visibleFields.value)
   const byPath = new Map(allFields.value.map((f: any) => [f.path, f]))
-  return fieldOptions.value
-    .filter((f: any) => set.has(f.path))
-    .map((f: any) => {
-      if (source.value !== 'usage' || !usageCurrency.value) return f
-      const usdPath = currencyPath(f.path)
-      if (usdPath === f.path || !byPath.has(usdPath)) return f
+  return visibleFields.value
+    .map((path: string) => byPath.get(path))
+    .filter((field: any) => field !== undefined)
+    .map((field: any) => {
+      if (source.value !== 'usage' || !usageCurrency.value) return field
+      const usdPath = currencyPath(field.path)
+      if (usdPath === field.path || !byPath.has(usdPath)) return field
       return byPath.get(usdPath)
     })
 })

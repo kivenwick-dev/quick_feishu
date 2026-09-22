@@ -91,6 +91,26 @@ describe('snapshot history', () => {
     wrapper.unmount()
   })
 
+  it('orders snapshot cards by the selection sequence', async () => {
+    vi.mocked(api.history).mockResolvedValue({data:{
+      fields: [{path:'used',label:'已用'}, {path:'quota',label:'总额'}],
+      rows: [{id:1,date:'2026-09-20',captured_at:'2026-09-20T08:00:00+08:00',values:{used:'10',quota:'20'},deltas:{}}],
+    }} as any)
+    const wrapper = mount(Snapshots,{global:{plugins:[ElementPlus]}})
+    await flushPromises()
+    const selector = wrapper.findComponent('.field-selector') as VueWrapper<any>
+
+    selector.vm.$emit('update:modelValue', ['quota', 'used'])
+    selector.vm.$emit('change', ['quota', 'used'])
+    await flushPromises()
+
+    expect(wrapper.findAll('.mcard').map((card) => card.text())).toEqual([
+      expect.stringContaining('总额'),
+      expect.stringContaining('已用'),
+    ])
+    wrapper.unmount()
+  })
+
   it('shows a clear usage amount mode and swaps to currency fields', async () => {
     localStorage.setItem('quick-feishu.snapshots.usage-currency', 'true')
     vi.mocked(api.tokens).mockResolvedValue({data:{items:[{token_id:7,token_name:'令牌 A'}]}} as any)

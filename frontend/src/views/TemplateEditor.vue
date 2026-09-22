@@ -24,7 +24,7 @@
             placeholder="留空则日报不展示算法说明"
             style="max-width: 720px"
           />
-          <div class="form-hint">展示在日报顶部，可自定义；清空并保存则不显示。</div>
+          <div class="form-hint">展示在日报数据底部，可自定义；清空并保存则不显示。</div>
         </el-form-item>
       </el-form>
     </div>
