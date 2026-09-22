@@ -104,3 +104,53 @@ func TestBuildCardSkipsEmptySections(t *testing.T) {
 		t.Error("valid section title should be rendered")
 	}
 }
+
+func TestBuildCardAddsDefaultTokenSectionTitle(t *testing.T) {
+	tmpl := &Template{Title: "日报", AlgorithmNote: stringPtr("")}
+	card, err := BuildCard(tmpl, "2026-09-20", []SectionResult{{
+		Tokens: []TokenNode{{Name: "claude", Metrics: []Metric{{Label: "累计已用", Value: "$1.00"}}}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := card.ToJSON()
+	text := string(b)
+	if !strings.Contains(text, "**令牌使用情况**") {
+		t.Fatalf("missing default token section title: %s", text)
+	}
+	if !strings.Contains(text, "claude") || !strings.Contains(text, "累计已用") {
+		t.Fatalf("token content missing: %s", text)
+	}
+}
+
+func TestBuildCardSplitsLongTokenContent(t *testing.T) {
+	tmpl := &Template{Title: "日报", AlgorithmNote: stringPtr("")}
+	tokens := make([]TokenNode, 0, 80)
+	for i := 0; i < 80; i++ {
+		tokens = append(tokens, TokenNode{
+			Name: strings.Repeat("token-", 8) + string(rune('A'+i%26)),
+			Metrics: []Metric{
+				{Label: "可用总量", Value: "$10.00", Delta: "+$1.00", DeltaLabel: "消耗", HasDelta: true},
+				{Label: "累计已用", Value: "$5.00", Delta: "+$1.00", HasDelta: true},
+			},
+		})
+	}
+	card, err := BuildCard(tmpl, "2026-09-20", []SectionResult{{Name: "key使用情况", Tokens: tokens}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	contentBlocks := 0
+	for _, el := range card.Card.Elements {
+		div, ok := el.(DivText)
+		if !ok || div.Text.Content == "**key使用情况**" {
+			continue
+		}
+		contentBlocks++
+		if len(div.Text.Content) > maxLarkMDContentLen {
+			t.Fatalf("content block length = %d, want <= %d", len(div.Text.Content), maxLarkMDContentLen)
+		}
+	}
+	if contentBlocks < 2 {
+		t.Fatalf("long token content was not split, contentBlocks = %d", contentBlocks)
+	}
+}

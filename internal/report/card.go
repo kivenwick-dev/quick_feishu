@@ -74,6 +74,7 @@ type SectionResult struct {
 }
 
 const indent = "\u3000" // 全角空格
+const maxLarkMDContentLen = 1800
 
 // flatContent 扁平分区分内容：一个指标一行；开启差值的指标下方加「（变动）」子级
 func flatContent(fields []DiffResult) string {
@@ -143,6 +144,42 @@ func algorithmContent(note string) string {
 	return "**算法说明**\n" + note
 }
 
+func splitLarkMDContent(content string) []string {
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return nil
+	}
+	if len(content) <= maxLarkMDContentLen {
+		return []string{content}
+	}
+	var chunks []string
+	var cur strings.Builder
+	for _, line := range strings.Split(content, "\n") {
+		if cur.Len() > 0 && cur.Len()+1+len(line) > maxLarkMDContentLen {
+			chunks = append(chunks, cur.String())
+			cur.Reset()
+		}
+		if cur.Len() > 0 {
+			cur.WriteByte('\n')
+		}
+		cur.WriteString(line)
+	}
+	if cur.Len() > 0 {
+		chunks = append(chunks, cur.String())
+	}
+	return chunks
+}
+
+func sectionTitle(sec SectionResult) string {
+	if strings.TrimSpace(sec.Name) != "" {
+		return sec.Name
+	}
+	if len(sec.Tokens) > 0 {
+		return "令牌使用情况"
+	}
+	return ""
+}
+
 // BuildCard 根据模板与分区结果生成卡片
 func BuildCard(tmpl *Template, date string, sections []SectionResult) (*Card, error) {
 	card := &Card{
@@ -171,16 +208,18 @@ func BuildCard(tmpl *Template, date string, sections []SectionResult) (*Card, er
 			card.Card.Elements = append(card.Card.Elements, HR{Tag: "hr"})
 		}
 		first = false
-		if sec.Name != "" {
+		if title := sectionTitle(sec); title != "" {
 			card.Card.Elements = append(card.Card.Elements, DivText{
 				Tag:  "div",
-				Text: CardText{Tag: "lark_md", Content: "**" + sec.Name + "**"},
+				Text: CardText{Tag: "lark_md", Content: "**" + title + "**"},
 			})
 		}
-		card.Card.Elements = append(card.Card.Elements, DivText{
-			Tag:  "div",
-			Text: CardText{Tag: "lark_md", Content: sectionContent(sec)},
-		})
+		for _, chunk := range splitLarkMDContent(sectionContent(sec)) {
+			card.Card.Elements = append(card.Card.Elements, DivText{
+				Tag:  "div",
+				Text: CardText{Tag: "lark_md", Content: chunk},
+			})
+		}
 	}
 	return card, nil
 }
