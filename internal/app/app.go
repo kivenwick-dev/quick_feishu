@@ -182,6 +182,7 @@ func liveTokenOverrides(client *api.Client) map[int]map[string]interface{} {
 			continue
 		}
 		out[item.ID] = map[string]interface{}{
+			"name":            item.Name,
 			"total_available": usage.TotalAvailable,
 			"total_used":      usage.TotalUsed,
 			"total_granted":   usage.TotalGranted,

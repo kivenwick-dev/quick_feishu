@@ -237,6 +237,61 @@ func TestBuildSectionsUsageCurrencySwitch(t *testing.T) {
 	}
 }
 
+func TestBuildSectionsUsesLiveTokenOverridesWhenSnapshotHasNoTokens(t *testing.T) {
+	gdb, err := db.Init(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.SeedDicts(gdb)
+
+	latest := &model.Snapshot{SnapshotDate: "2026-09-20", AccountRaw: mustJSON(t, map[string]interface{}{})}
+	gdb.Create(latest)
+
+	on := true
+	tmpl := &Template{Sections: []Section{
+		{Name: "令牌使用情况", Source: "usage", PerToken: true, Fields: []Field{
+			{Field: "name"},
+			{Field: "total_available", Diff: true, Currency: &on},
+			{Field: "total_used", Diff: true, Currency: &on},
+			{Field: "total_granted", Diff: true, Currency: &on},
+			{Field: remainingPercentField},
+		}},
+	}}
+	overrides := map[int]map[string]interface{}{
+		7: {
+			"name":            "live-key",
+			"total_available": int64(2000000),
+			"total_used":      int64(1500000),
+			"total_granted":   int64(3500000),
+			"unlimited_quota": false,
+		},
+	}
+
+	secs := BuildSectionsWithOverrides(gdb, latest, nil, tmpl, nil, overrides, 500000)
+	if len(secs) != 1 {
+		t.Fatalf("sections = %d, want 1: %+v", len(secs), secs)
+	}
+	if len(secs[0].Tokens) != 1 {
+		t.Fatalf("tokens = %d, want 1: %+v", len(secs[0].Tokens), secs[0].Tokens)
+	}
+	token := secs[0].Tokens[0]
+	if token.Name != "live-key" {
+		t.Fatalf("token name = %q, want live-key", token.Name)
+	}
+	for _, want := range []string{"可用总量", "累计已用", "授予总量", "剩余用量"} {
+		found := false
+		for _, metric := range token.Metrics {
+			if metric.Label == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("missing metric %q: %+v", want, token.Metrics)
+		}
+	}
+}
+
 func TestBuildSectionsRemainingPercentUsesLiveOverrides(t *testing.T) {
 	gdb, err := db.Init(t.TempDir())
 	if err != nil {

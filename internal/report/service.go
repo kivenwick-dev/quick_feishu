@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"sort"
 
 	"gorm.io/gorm"
 	"quick-feishu/internal/db"
@@ -106,6 +107,9 @@ func BuildSectionsWithOverrides(gdb *gorm.DB, latest, prev *model.Snapshot, tmpl
 			if err != nil {
 				continue
 			}
+			if len(tokens) == 0 && len(tokenOverrides) > 0 {
+				tokens = tokenSnapshotsFromOverrides(tokenOverrides)
+			}
 			prevTokens, _ := db.TokenSnapshots(gdb, prevID(prev))
 			prevByID := map[int]model.TokenSnapshot{}
 			for _, pt := range prevTokens {
@@ -136,6 +140,9 @@ func BuildSectionsWithOverrides(gdb *gorm.DB, latest, prev *model.Snapshot, tmpl
 						continue
 					}
 					lateVal, ok := extractTokenField(tok, f.Field)
+					if !ok {
+						lateVal, ok = tokenDisplayValue(tok, f.Field, tokenOverrides)
+					}
 					if !ok {
 						continue
 					}
@@ -177,6 +184,25 @@ func BuildSectionsWithOverrides(gdb *gorm.DB, latest, prev *model.Snapshot, tmpl
 		}
 	}
 	return sections
+}
+
+func tokenSnapshotsFromOverrides(tokenOverrides map[int]map[string]interface{}) []model.TokenSnapshot {
+	ids := make([]int, 0, len(tokenOverrides))
+	for id := range tokenOverrides {
+		ids = append(ids, id)
+	}
+	sort.Ints(ids)
+	tokens := make([]model.TokenSnapshot, 0, len(ids))
+	for _, id := range ids {
+		name := fmt.Sprintf("token-%d", id)
+		if raw, ok := tokenOverrides[id]["name"]; ok {
+			if s, ok := raw.(string); ok && s != "" {
+				name = s
+			}
+		}
+		tokens = append(tokens, model.TokenSnapshot{TokenID: id, TokenName: name})
+	}
+	return tokens
 }
 
 func remainingPercentMetric(tok model.TokenSnapshot, tokenOverrides map[int]map[string]interface{}) (Metric, bool) {
