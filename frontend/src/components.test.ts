@@ -77,17 +77,23 @@ describe('Dashboard', () => {
     expect(selector.props('modelValue')).toEqual(['0:已用配额', '0:总配额'])
     expect(wrapper.findAll('.mcard')).toHaveLength(2)
 
-    selector.vm.$emit('update:modelValue', ['0:已用配额'])
-    selector.vm.$emit('change', ['0:已用配额'])
+    selector.vm.$emit('update:modelValue', ['0:总配额', '0:已用配额'])
+    selector.vm.$emit('change', ['0:总配额', '0:已用配额'])
     await flushPromises()
-    expect(wrapper.findAll('.mcard')).toHaveLength(1)
-    expect(wrapper.find('.mcard').text()).toContain('已用配额')
+    expect(wrapper.findAll('.mcard')).toHaveLength(2)
+    expect(wrapper.findAll('.mcard').map((card) => card.text())).toEqual([
+      expect.stringContaining('总配额'),
+      expect.stringContaining('已用配额'),
+    ])
     wrapper.unmount()
 
     const remounted = mount(Dashboard, { global: { plugins: [ElementPlus] } })
     await flushPromises()
-    expect(remounted.findComponent({ name: 'ElSelect' }).props('modelValue')).toEqual(['0:已用配额'])
-    expect(remounted.findAll('.mcard')).toHaveLength(1)
+    expect(remounted.findComponent({ name: 'ElSelect' }).props('modelValue')).toEqual(['0:总配额', '0:已用配额'])
+    expect(remounted.findAll('.mcard').map((card) => card.text())).toEqual([
+      expect.stringContaining('总配额'),
+      expect.stringContaining('已用配额'),
+    ])
     remounted.unmount()
   })
 

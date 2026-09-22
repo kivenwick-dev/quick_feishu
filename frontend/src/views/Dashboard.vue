@@ -210,14 +210,20 @@ const metricOptions = computed(() => {
 })
 
 const visibleSections = computed(() => {
-  const visible = new Set(visibleMetricKeys.value)
+  const selectionOrder = new Map(visibleMetricKeys.value.map((key, index) => [key, index]))
+  const selectedMetrics = (metrics: any[], sectionIndex: number) => metrics
+    .filter((metric: any) => selectionOrder.has(`${sectionIndex}:${metric.label}`))
+    .sort((left: any, right: any) => (
+      selectionOrder.get(`${sectionIndex}:${left.label}`)! - selectionOrder.get(`${sectionIndex}:${right.label}`)!
+    ))
+
   return sections.value.map((sec: any, sectionIndex: number) => ({
     ...sec,
     key: `${sectionIndex}:${sec.name}`,
-    fields: (sec.fields || []).filter((field: any) => visible.has(`${sectionIndex}:${field.label}`)),
+    fields: selectedMetrics(sec.fields || [], sectionIndex),
     tokens: (sec.tokens || []).map((token: any) => ({
       ...token,
-      metrics: (token.metrics || []).filter((metric: any) => visible.has(`${sectionIndex}:${metric.label}`)),
+      metrics: selectedMetrics(token.metrics || [], sectionIndex),
     })),
   }))
 })
