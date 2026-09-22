@@ -292,6 +292,47 @@ func TestBuildSectionsUsesLiveTokenOverridesWhenSnapshotHasNoTokens(t *testing.T
 	}
 }
 
+func TestBuildSectionsUsageRendersWhenPerTokenFalse(t *testing.T) {
+	gdb, err := db.Init(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.SeedDicts(gdb)
+
+	latest := &model.Snapshot{SnapshotDate: "2026-09-22", AccountRaw: mustJSON(t, map[string]interface{}{})}
+	gdb.Create(latest)
+	gdb.Create(&model.TokenSnapshot{
+		SnapshotID: latest.ID,
+		TokenID:    2498337,
+		TokenName:  "astra_liberai_test-zihang",
+		UsageRaw: mustJSON(t, map[string]interface{}{
+			"name":            "astra_liberai_test-zihang",
+			"total_available": float64(2000000),
+			"total_used":      float64(1500000),
+			"total_granted":   float64(3500000),
+			"unlimited_quota": false,
+		}),
+	})
+
+	on := true
+	tmpl := &Template{Sections: []Section{
+		{Name: "", Source: "usage", PerToken: false, Fields: []Field{
+			{Field: "name"},
+			{Field: "total_available", Diff: true, Currency: &on},
+			{Field: "total_used", Diff: true, Currency: &on},
+			{Field: "total_granted", Diff: true, Currency: &on},
+			{Field: remainingPercentField},
+		}},
+	}}
+	secs := BuildSections(gdb, latest, nil, tmpl)
+	if len(secs) != 1 {
+		t.Fatalf("sections = %d, want 1: %+v", len(secs), secs)
+	}
+	if len(secs[0].Tokens) != 1 || secs[0].Tokens[0].Name != "astra_liberai_test-zihang" {
+		t.Fatalf("usage section should render token tree even when per_token=false: %+v", secs)
+	}
+}
+
 func TestBuildSectionsRemainingPercentUsesLiveOverrides(t *testing.T) {
 	gdb, err := db.Init(t.TempDir())
 	if err != nil {

@@ -100,9 +100,6 @@ func BuildSectionsWithOverrides(gdb *gorm.DB, latest, prev *model.Snapshot, tmpl
 			}
 
 		case "usage":
-			if !sec.PerToken {
-				continue
-			}
 			tokens, err := db.TokenSnapshots(gdb, latest.ID)
 			if err != nil {
 				continue
