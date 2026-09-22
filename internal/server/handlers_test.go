@@ -223,6 +223,52 @@ func TestGetLiveBilling(t *testing.T) {
 	}
 }
 
+func TestGetLatestUsesLiveTokensWhenLatestSnapshotHasNone(t *testing.T) {
+	for _, key := range []string{"QR_USER_ID", "QR_SYSTEM_TOKEN", "QR_FEISHU_WEBHOOK"} {
+		t.Setenv(key, "")
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/user/self":
+			_, _ = w.Write([]byte(`{"data":{"id":1,"quota":1000,"used_quota":300},"success":true}`))
+		case "/api/status":
+			_, _ = w.Write([]byte(`{"data":{"quota_per_unit":500000},"success":true}`))
+		case "/api/token/":
+			_, _ = w.Write([]byte(`{"data":{"page":1,"page_size":100,"total":1,"items":[{"id":7,"key":"token-key","name":"live-token"}]},"success":true}`))
+		case "/api/usage/token/":
+			_, _ = w.Write([]byte(`{"data":{"total_available":800,"total_used":200,"total_granted":1000},"success":true}`))
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	cfg := config.Default()
+	cfg.Account.UserID = "1"
+	cfg.Account.APIBase = srv.URL
+	a, err := app.New(cfg, t.TempDir(), filepath.Join(t.TempDir(), "config.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SeedDicts(a.DB()); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.DB().Create(&model.Snapshot{SnapshotDate: "2026-09-22", AccountRaw: []byte(`{"quota":1000,"used_quota":300}`)}).Error; err != nil {
+		t.Fatal(err)
+	}
+	h := &Handlers{App: a}
+	s := New(0)
+	s.RegisterRoutes(h)
+	w := httptest.NewRecorder()
+	s.Engine.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/latest", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d body = %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), `"token_data_source":"live"`) || !strings.Contains(w.Body.String(), "live-token") {
+		t.Fatalf("latest response should render live token fallback: %s", w.Body.String())
+	}
+}
+
 func TestHandlersFollowAccountDatabaseSwitch(t *testing.T) {
 	for _, key := range []string{"QR_USER_ID", "QR_SYSTEM_TOKEN", "QR_FEISHU_WEBHOOK"} {
 		t.Setenv(key, "")

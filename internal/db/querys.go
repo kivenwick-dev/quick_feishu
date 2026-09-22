@@ -120,13 +120,23 @@ func DictFieldList(gdb *gorm.DB, source string) []FieldInfo {
 	return out
 }
 
-// LatestTokens 返回最近一次快照下的令牌列表
+// LatestTokens returns the token list from the latest complete token capture.
+// An account-only partial capture must not make the history token selector
+// appear empty when an earlier snapshot already contains token data.
 func LatestTokens(gdb *gorm.DB) ([]model.TokenSnapshot, error) {
 	latest, err := LatestSnapshot(gdb)
 	if err != nil {
 		return nil, err
 	}
-	return TokenSnapshots(gdb, latest.ID)
+	tokens, err := TokenSnapshots(gdb, latest.ID)
+	if err != nil || len(tokens) > 0 {
+		return tokens, err
+	}
+	var mostRecentToken model.TokenSnapshot
+	if err := gdb.Order("snapshot_id DESC, id DESC").First(&mostRecentToken).Error; err != nil {
+		return tokens, err
+	}
+	return TokenSnapshots(gdb, mostRecentToken.SnapshotID)
 }
 
 // PreviousSnapshot 返回展示顺序中紧邻当前记录的上一条，包含同日采集。

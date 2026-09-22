@@ -149,22 +149,29 @@ func (a *App) RunReport() (*model.SendLog, error) {
 	if tmpl == nil {
 		tmpl = report.DefaultTemplate()
 	}
-	accountOverrides, tokenOverrides, quotaPerUnit := liveReportOverrides(deps.client)
+	accountOverrides, tokenOverrides, quotaPerUnit := LiveReportOverrides(deps.client)
 	return report.ExecuteReportWithOverrides(deps.gdb, latest, prev, tmpl, deps.webhookURL, deps.retryTimes, accountOverrides, tokenOverrides, quotaPerUnit)
 }
 
-func liveReportOverrides(client *api.Client) (map[string]interface{}, map[int]map[string]interface{}, int64) {
+// LiveReportOverrides returns live values for report and dashboard fallbacks.
+// Each upstream endpoint is independent: a temporary account or status failure
+// must not prevent the token list from being used.
+func LiveReportOverrides(client *api.Client) (map[string]interface{}, map[int]map[string]interface{}, int64) {
 	account, _, accountErr := client.GetAccount()
 	status, statusErr := client.GetStatus()
-	if accountErr != nil || statusErr != nil || account == nil || status == nil || status.QuotaPerUnit <= 0 {
-		return nil, nil, 0
+	var accountOverrides map[string]interface{}
+	if accountErr == nil && account != nil {
+		accountOverrides = map[string]interface{}{
+			"balance_usd": account.Quota,
+			"used_usd":    account.UsedQuota,
+		}
 	}
-	accountOverrides := map[string]interface{}{
-		"balance_usd": account.Quota,
-		"used_usd":    account.UsedQuota,
+	quotaPerUnit := int64(0)
+	if statusErr == nil && status != nil && status.QuotaPerUnit > 0 {
+		quotaPerUnit = status.QuotaPerUnit
 	}
 	tokenOverrides := liveTokenOverrides(client)
-	return accountOverrides, tokenOverrides, status.QuotaPerUnit
+	return accountOverrides, tokenOverrides, quotaPerUnit
 }
 
 func liveTokenOverrides(client *api.Client) map[int]map[string]interface{} {

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"quick-feishu/internal/app"
 	"quick-feishu/internal/db"
 	"quick-feishu/internal/model"
 	"quick-feishu/internal/report"
@@ -109,7 +110,20 @@ func (h *Handlers) GetLatest(c *gin.Context) {
 	if err != nil {
 		currency = true
 	}
-	sections := report.BuildSections(gdb, latest, prev, publicTemplate(tmpl, currency))
+	// A partial capture (account endpoint succeeded but token-list failed) is
+	// still retained for account history. Do not let it blank the usage area:
+	// fetch live token values only when this newest snapshot has no token rows.
+	var tokenOverrides map[int]map[string]interface{}
+	quotaPerUnit := int64(0)
+	tokenDataSource := "snapshot"
+	if tokens, _ := db.TokenSnapshots(gdb, latest.ID); len(tokens) == 0 {
+		tokenDataSource = "unavailable"
+		_, tokenOverrides, quotaPerUnit = app.LiveReportOverrides(h.App.Client())
+		if len(tokenOverrides) > 0 {
+			tokenDataSource = "live"
+		}
+	}
+	sections := report.BuildSectionsWithOverrides(gdb, latest, prev, publicTemplate(tmpl, currency), nil, tokenOverrides, quotaPerUnit)
 	for i := range sections {
 		for j := range sections[i].Tokens {
 			for k := range sections[i].Tokens[j].Metrics {
@@ -120,5 +134,9 @@ func (h *Handlers) GetLatest(c *gin.Context) {
 			}
 		}
 	}
-	c.JSON(http.StatusOK, gin.H{"date": latest.SnapshotDate, "sections": sections})
+	c.JSON(http.StatusOK, gin.H{
+		"date":              latest.SnapshotDate,
+		"sections":          sections,
+		"token_data_source": tokenDataSource,
+	})
 }

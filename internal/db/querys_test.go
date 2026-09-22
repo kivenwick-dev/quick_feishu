@@ -78,3 +78,28 @@ func TestSnapshotQueries(t *testing.T) {
 		t.Errorf("logs total=%d len=%d, want 1/1", ltotal, len(logs))
 	}
 }
+
+func TestLatestTokensFallsBackPastAccountOnlySnapshot(t *testing.T) {
+	gdb, err := Init(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	withTokens := &model.Snapshot{SnapshotDate: "2026-09-20"}
+	if err := gdb.Create(withTokens).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := gdb.Create(&model.TokenSnapshot{SnapshotID: withTokens.ID, TokenID: 7, TokenName: "saved-token"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := gdb.Create(&model.Snapshot{SnapshotDate: "2026-09-21"}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	tokens, err := LatestTokens(gdb)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tokens) != 1 || tokens[0].TokenName != "saved-token" {
+		t.Fatalf("latest tokens = %+v, want fallback token", tokens)
+	}
+}

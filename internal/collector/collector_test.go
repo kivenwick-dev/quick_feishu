@@ -166,6 +166,30 @@ func TestSaveRetainsSameDateCaptures(t *testing.T) {
 	}
 }
 
+func TestCollectDistinguishesFailedTokenListFromEmptyList(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/user/self":
+			_, _ = w.Write([]byte(`{"data":{"id":1,"quota":1000,"used_quota":300},"success":true}`))
+		case "/api/token/":
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"error":{"message":"invalid token"}}`))
+		}
+	}))
+	defer srv.Close()
+
+	res := Collect(api.NewClient(srv.URL, "sys-token", "1"))
+	if res.TokenListAvailable() {
+		t.Fatal("failed token list must not be represented as an empty successful list")
+	}
+	if res.TokenCount() != 0 {
+		t.Fatalf("token count = %d, want 0", res.TokenCount())
+	}
+	if len(res.Issues) != 1 || res.Issues[0].Scope != "tokenlist" {
+		t.Fatalf("issues = %+v, want one tokenlist issue", res.Issues)
+	}
+}
+
 func TestSaveForAccountRejectsMismatchedOrUnverifiedAccount(t *testing.T) {
 	gdb, err := db.Init(t.TempDir())
 	if err != nil {

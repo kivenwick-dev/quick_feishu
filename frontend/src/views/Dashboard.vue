@@ -288,7 +288,12 @@ onBeforeUnmount(() => {
 async function runSnapshot() {
   try {
     const res = await api.runSnapshot()
-    ElMessage.success(`快照已采集: ${res.data.date}`)
+    const count = Number(res.data.token_count || 0)
+    if (!res.data.token_list_available) {
+      ElMessage.warning('账号快照已保存，但令牌列表采集失败；请查看采集提醒')
+    } else {
+      ElMessage.success(`快照已采集: ${res.data.date}（${count} 个令牌）`)
+    }
     issues.value = res.data.issues || []
     if (issues.value.length) issuesDialog.value = true
     await Promise.all([load(), refreshLiveBilling()])

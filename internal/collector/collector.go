@@ -102,7 +102,6 @@ func Collect(c *api.Client) *Result {
 	list, _, err := c.GetTokenList()
 	if err != nil {
 		res.Issues = append(res.Issues, classify("tokenlist", "", "", err))
-		res.TokenList = &api.TokenListData{Items: []api.TokenItem{}}
 	} else {
 		res.TokenList = list
 		for _, it := range list.Items {
@@ -115,6 +114,21 @@ func Collect(c *api.Client) *Result {
 		}
 	}
 	return res
+}
+
+// TokenCount reports how many token records were available from the token-list
+// endpoint. A failed token-list request is deliberately different from a
+// successful request that contains zero tokens.
+func (r *Result) TokenCount() int {
+	if r == nil || r.TokenList == nil {
+		return 0
+	}
+	return len(r.TokenList.Items)
+}
+
+// TokenListAvailable reports whether the token-list request itself succeeded.
+func (r *Result) TokenListAvailable() bool {
+	return r != nil && r.TokenList != nil
 }
 
 // Save 将采集结果（全字段原始 JSON）写入快照表。
